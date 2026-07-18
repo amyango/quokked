@@ -26,6 +26,7 @@ func main() {
 	mux.HandleFunc("/api/tasks/", handleTaskUpdate(client, poke))
 	mux.HandleFunc("/api/pinned/completed", handlePinnedCompleted(client))
 	mux.HandleFunc("/api/projects", handleProjects(client))
+	mux.HandleFunc("/api/sections", handleSections(client))
 	mux.HandleFunc("/api/settings", handleSettings)
 	mux.HandleFunc("/api/events", handleEvents(broker))
 

@@ -21,6 +21,10 @@ export function fetchProjects() {
   return getJSON('/api/projects')
 }
 
+export function fetchSectionsForProject(projectId) {
+  return getJSON(`/api/sections?project_id=${encodeURIComponent(projectId)}`)
+}
+
 export function fetchSettings() {
   return getJSON('/api/settings')
 }

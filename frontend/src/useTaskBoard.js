@@ -3,6 +3,7 @@ import {
   createEventsSource,
   fetchPinnedCompleted,
   fetchProjects,
+  fetchSectionsForProject,
   fetchSettings,
   fetchTasksForProject,
   updateTaskLabels,
@@ -39,6 +40,7 @@ export function useTaskBoard() {
   const [defaultProjectNames, setDefaultProjectNames] = useState([])
   const [addedProjectIds, setAddedProjectIds] = useState(loadAddedProjectIds)
   const [tasksByProject, setTasksByProject] = useState({}) // projectId -> Task[]
+  const [sectionsByProject, setSectionsByProject] = useState({}) // projectId -> Section[]
   const [pinnedCompleted, setPinnedCompleted] = useState([])
   const [collaborators, setCollaborators] = useState({}) // uid -> { id, name, email }
   const [draggingTaskId, setDraggingTaskId] = useState(null)
@@ -80,11 +82,22 @@ export function useTaskBoard() {
   useEffect(() => {
     const missing = [...activeProjectIds].filter((id) => !(id in tasksByProject))
     if (missing.length === 0) return
-    Promise.all(missing.map((id) => fetchTasksForProject(id).then((tasks) => [id, tasks])))
+    Promise.all(
+      missing.map((id) =>
+        Promise.all([fetchTasksForProject(id), fetchSectionsForProject(id)]).then(
+          ([tasks, sections]) => [id, tasks, sections],
+        ),
+      ),
+    )
       .then((entries) => {
         setTasksByProject((prev) => {
           const next = { ...prev }
           for (const [id, tasks] of entries) next[id] = tasks
+          return next
+        })
+        setSectionsByProject((prev) => {
+          const next = { ...prev }
+          for (const [id, , sections] of entries) next[id] = sections
           return next
         })
       })
@@ -94,19 +107,40 @@ export function useTaskBoard() {
       })
   }, [activeProjectIds, tasksByProject])
 
+  const sectionsById = useMemo(() => {
+    const map = new Map()
+    for (const sections of Object.values(sectionsByProject)) {
+      for (const section of sections) {
+        map.set(section.id, { name: section.name, order: section.section_order })
+      }
+    }
+    return map
+  }, [sectionsByProject])
+
   // Background refetch, triggered by SSE "changed" events (see the
   // EventSource effect below). Merges into tasksByProject rather than
   // replacing it, so the "missing ids" effect above stays untouched.
   async function refetchAll() {
     const ids = [...activeProjectIds]
     const [entries, pinned, projectList] = await Promise.all([
-      Promise.all(ids.map((id) => fetchTasksForProject(id).then((tasks) => [id, tasks]))),
+      Promise.all(
+        ids.map((id) =>
+          Promise.all([fetchTasksForProject(id), fetchSectionsForProject(id)]).then(
+            ([tasks, sections]) => [id, tasks, sections],
+          ),
+        ),
+      ),
       fetchPinnedCompleted(),
       fetchProjects(),
     ])
     setTasksByProject((prev) => {
       const next = { ...prev }
       for (const [id, tasks] of entries) next[id] = tasks
+      return next
+    })
+    setSectionsByProject((prev) => {
+      const next = { ...prev }
+      for (const [id, , sections] of entries) next[id] = sections
       return next
     })
     setPinnedCompleted(pinned.tasks || [])
@@ -293,6 +327,7 @@ export function useTaskBoard() {
     pinnedTasks,
     boardTasks,
     groups,
+    sectionsById,
     otherProjects,
     toggleProject,
     handleDragStart,

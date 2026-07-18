@@ -76,6 +76,13 @@ type Project struct {
 	ViewStyle   string `json:"view_style,omitempty"`
 }
 
+type Section struct {
+	ID           string `json:"id"`
+	ProjectID    string `json:"project_id"`
+	Name         string `json:"name"`
+	SectionOrder int    `json:"section_order"`
+}
+
 // page mirrors the {"results": [...], "next_cursor": ...} envelope that
 // every paginated Todoist API v1 list endpoint returns.
 type page[T any] struct {
@@ -103,6 +110,20 @@ func (c *Client) FetchProjects() ([]Project, error) {
 		return nil, fmt.Errorf("fetch projects: %w", err)
 	}
 	return projects, nil
+}
+
+// FetchSections fetches sections, optionally scoped to a single project. An
+// empty projectID fetches sections across all projects.
+func (c *Client) FetchSections(projectID string) ([]Section, error) {
+	params := url.Values{}
+	if projectID != "" {
+		params.Set("project_id", projectID)
+	}
+	sections, err := fetchAllPages[Section](c, "/sections", params)
+	if err != nil {
+		return nil, fmt.Errorf("fetch sections: %w", err)
+	}
+	return sections, nil
 }
 
 // completedPage mirrors the {"items": [...], "next_cursor": ...} envelope

@@ -1,4 +1,4 @@
-import { GROUP_OPTIONS } from './grouping'
+import { GROUP_OPTIONS, groupBySection } from './grouping'
 import TaskCard from './TaskCard'
 import { useTaskBoard } from './useTaskBoard'
 import './App.css'
@@ -18,6 +18,7 @@ export default function App() {
     pinnedTasks,
     boardTasks,
     groups,
+    sectionsById,
     otherProjects,
     addedProjectIds,
     toggleProject,
@@ -105,25 +106,38 @@ export default function App() {
           {boardTasks.length === 0 && tasks.length > 0 && (
             <p className="status board-empty">Everything's pinned 📌</p>
           )}
-          {groups.map((group) => (
-            <section className="column" key={group.key}>
-              <h2>
-                {group.key} <span className="count">{group.tasks.length}</span>
-              </h2>
-              <ul>
-                {group.tasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    draggable
-                    dragging={draggingTaskId === task.id}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                  />
-                ))}
-              </ul>
-            </section>
-          ))}
+          {groups.map((group) => {
+            const sectionBuckets =
+              groupBy === 'project'
+                ? groupBySection(group.tasks, sectionsById)
+                : [{ key: 'none', name: null, tasks: group.tasks }]
+            return (
+              <section className="column" key={group.key}>
+                <h2>
+                  {group.key} <span className="count">{group.tasks.length}</span>
+                </h2>
+                <div className="column-body">
+                  {sectionBuckets.map((bucket) => (
+                    <div className="section-bucket" key={bucket.key}>
+                      {bucket.name && <div className="section-separator">{bucket.name}</div>}
+                      <ul>
+                        {bucket.tasks.map((task) => (
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            draggable
+                            dragging={draggingTaskId === task.id}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )
+          })}
         </div>
       )}
 
