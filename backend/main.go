@@ -31,6 +31,7 @@ func main() {
 	mux.HandleFunc("/api/tasks/", handleTaskUpdate(client))
 	mux.HandleFunc("/api/pinned/completed", handlePinnedCompleted(client))
 	mux.HandleFunc("/api/projects", handleProjects(client))
+	mux.HandleFunc("/api/sections", handleSections(client))
 	mux.HandleFunc("/api/settings", handleSettings)
 
 	addr := ":" + cfg.Port
@@ -171,6 +172,22 @@ func handleProjects(client *todoist.Client) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, projects)
+	}
+}
+
+func handleSections(client *todoist.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		sections, err := client.FetchSections(r.URL.Query().Get("project_id"))
+		if err != nil {
+			log.Printf("fetch sections: %v", err)
+			http.Error(w, "failed to fetch sections from Todoist", http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, http.StatusOK, sections)
 	}
 }
 

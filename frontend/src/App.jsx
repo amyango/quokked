@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   fetchPinnedCompleted,
   fetchProjects,
+  fetchSectionsForProject,
   fetchSettings,
   fetchTasksForProject,
   updateTaskLabels,
 } from './api'
-import { GROUP_OPTIONS, groupTasks } from './grouping'
+import { GROUP_OPTIONS, groupBySection, groupTasks } from './grouping'
 import TaskCard from './TaskCard'
 import './App.css'
 
@@ -37,6 +38,7 @@ export default function App() {
   const [defaultProjectNames, setDefaultProjectNames] = useState([])
   const [addedProjectIds, setAddedProjectIds] = useState(loadAddedProjectIds)
   const [tasksByProject, setTasksByProject] = useState({}) // projectId -> Task[]
+  const [sectionsByProject, setSectionsByProject] = useState({}) // projectId -> Section[]
   const [pinnedCompleted, setPinnedCompleted] = useState([])
   const [collaborators, setCollaborators] = useState({}) // uid -> { id, name, email }
   const [draggingTaskId, setDraggingTaskId] = useState(null)
@@ -78,11 +80,22 @@ export default function App() {
   useEffect(() => {
     const missing = [...activeProjectIds].filter((id) => !(id in tasksByProject))
     if (missing.length === 0) return
-    Promise.all(missing.map((id) => fetchTasksForProject(id).then((tasks) => [id, tasks])))
+    Promise.all(
+      missing.map((id) =>
+        Promise.all([fetchTasksForProject(id), fetchSectionsForProject(id)]).then(
+          ([tasks, sections]) => [id, tasks, sections],
+        ),
+      ),
+    )
       .then((entries) => {
         setTasksByProject((prev) => {
           const next = { ...prev }
           for (const [id, tasks] of entries) next[id] = tasks
+          return next
+        })
+        setSectionsByProject((prev) => {
+          const next = { ...prev }
+          for (const [id, , sections] of entries) next[id] = sections
           return next
         })
       })
@@ -91,6 +104,16 @@ export default function App() {
         setStatus('error')
       })
   }, [activeProjectIds, tasksByProject])
+
+  const sectionsById = useMemo(() => {
+    const map = new Map()
+    for (const sections of Object.values(sectionsByProject)) {
+      for (const section of sections) {
+        map.set(section.id, { name: section.name, order: section.section_order })
+      }
+    }
+    return map
+  }, [sectionsByProject])
 
   function toggleProject(id) {
     setAddedProjectIds((prev) => {
@@ -279,25 +302,38 @@ export default function App() {
           {boardTasks.length === 0 && tasks.length > 0 && (
             <p className="status board-empty">Everything's pinned 📌</p>
           )}
-          {groups.map((group) => (
-            <section className="column" key={group.key}>
-              <h2>
-                {group.key} <span className="count">{group.tasks.length}</span>
-              </h2>
-              <ul>
-                {group.tasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    draggable
-                    dragging={draggingTaskId === task.id}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                  />
-                ))}
-              </ul>
-            </section>
-          ))}
+          {groups.map((group) => {
+            const sectionBuckets =
+              groupBy === 'project'
+                ? groupBySection(group.tasks, sectionsById)
+                : [{ key: 'none', name: null, tasks: group.tasks }]
+            return (
+              <section className="column" key={group.key}>
+                <h2>
+                  {group.key} <span className="count">{group.tasks.length}</span>
+                </h2>
+                <div className="column-body">
+                  {sectionBuckets.map((bucket) => (
+                    <div className="section-bucket" key={bucket.key}>
+                      {bucket.name && <div className="section-separator">{bucket.name}</div>}
+                      <ul>
+                        {bucket.tasks.map((task) => (
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            draggable
+                            dragging={draggingTaskId === task.id}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )
+          })}
         </div>
       )}
 
