@@ -4,7 +4,7 @@ Visualizes and groups the user's Todoist tasks. See [README.md](README.md) for p
 
 ## Stack
 
-- `backend/` — Go, stdlib `net/http` only (no framework, no deps). `main.go` wires routes; `internal/todoist` is the Todoist API client; `internal/config` loads `.env`.
+- `backend/` — Go, stdlib `net/http` only (no framework, no deps). `main.go` wires routes; `internal/todoist` is the Todoist API client; `internal/config` loads `.env`; `internal/settings` loads `config/settings.json`.
 - `frontend/` — React + Vite, plain fetch (no data-fetching library). `src/api.js` calls the backend; `src/grouping.js` has the group-by logic; `src/App.jsx` is the only component so far.
 
 ## Run it
@@ -26,6 +26,10 @@ Starts backend (`:8080`) and frontend (`:5173`) together, installs frontend deps
 ## Credentials
 
 `backend/.env` (gitignored) needs `TODOIST_API_TOKEN`. Copy from `backend/.env.example`. Token comes from the user's Todoist integrations settings page. Never print the token value in output.
+
+## Default homepage project(s)
+
+`config/settings.json` (gitignored, like `backend/.env`) holds `{"defaultProjects": ["Name"]}` — project name(s), matched case-insensitively against `/api/projects`, to show on the homepage by default. Copy from `config/settings.example.json` to set up a fresh checkout. Backend reads it via `internal/settings` (path is `../config/settings.json`, relative to the `backend/` working directory) and serves it at `GET /api/settings`. `GET /api/tasks` now takes an optional `?project_id=` filter so the frontend only fetches tasks for active projects. The frontend (`App.jsx`) fetches tasks for default projects on load; projects not in the default list appear in a bottom bar and are only fetched when the user clicks to add them. Which non-default projects are added persists across reloads via `localStorage` (key `quokked.addedProjectIds`), not in the config file.
 
 ## Git
 

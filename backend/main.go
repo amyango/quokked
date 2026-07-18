@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"quokked/backend/internal/config"
+	"quokked/backend/internal/settings"
 	"quokked/backend/internal/todoist"
 )
 
@@ -21,6 +22,7 @@ func main() {
 	mux.HandleFunc("/api/health", handleHealth)
 	mux.HandleFunc("/api/tasks", handleTasks(client))
 	mux.HandleFunc("/api/projects", handleProjects(client))
+	mux.HandleFunc("/api/settings", handleSettings)
 
 	addr := ":" + cfg.Port
 	log.Printf("quokked backend listening on %s", addr)
@@ -58,7 +60,7 @@ func handleTasks(client *todoist.Client) http.HandlerFunc {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		tasks, err := client.FetchTasks()
+		tasks, err := client.FetchTasks(r.URL.Query().Get("project_id"))
 		if err != nil {
 			log.Printf("fetch tasks: %v", err)
 			http.Error(w, "failed to fetch tasks from Todoist", http.StatusBadGateway)
@@ -82,6 +84,14 @@ func handleProjects(client *todoist.Client) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, projects)
 	}
+}
+
+func handleSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, settings.Load())
 }
 
 func writeJSON(w http.ResponseWriter, status int, body interface{}) {

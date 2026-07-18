@@ -65,8 +65,14 @@ type page[T any] struct {
 	NextCursor *string `json:"next_cursor"`
 }
 
-func (c *Client) FetchTasks() ([]Task, error) {
-	tasks, err := fetchAllPages[Task](c, "/tasks")
+// FetchTasks fetches tasks, optionally scoped to a single project. An empty
+// projectID fetches tasks across all projects.
+func (c *Client) FetchTasks(projectID string) ([]Task, error) {
+	params := url.Values{}
+	if projectID != "" {
+		params.Set("project_id", projectID)
+	}
+	tasks, err := fetchAllPages[Task](c, "/tasks", params)
 	if err != nil {
 		return nil, fmt.Errorf("fetch tasks: %w", err)
 	}
@@ -74,19 +80,19 @@ func (c *Client) FetchTasks() ([]Task, error) {
 }
 
 func (c *Client) FetchProjects() ([]Project, error) {
-	projects, err := fetchAllPages[Project](c, "/projects")
+	projects, err := fetchAllPages[Project](c, "/projects", url.Values{})
 	if err != nil {
 		return nil, fmt.Errorf("fetch projects: %w", err)
 	}
 	return projects, nil
 }
 
-func fetchAllPages[T any](c *Client, path string) ([]T, error) {
+func fetchAllPages[T any](c *Client, path string, params url.Values) ([]T, error) {
 	var all []T
 	cursor := ""
 	for {
 		var p page[T]
-		if err := c.get(path, cursor, &p); err != nil {
+		if err := c.get(path, params, cursor, &p); err != nil {
 			return nil, err
 		}
 		all = append(all, p.Results...)
@@ -97,10 +103,18 @@ func fetchAllPages[T any](c *Client, path string) ([]T, error) {
 	}
 }
 
-func (c *Client) get(path, cursor string, out interface{}) error {
-	reqURL := baseURL + path
+func (c *Client) get(path string, params url.Values, cursor string, out interface{}) error {
+	query := url.Values{}
+	for k, v := range params {
+		query[k] = v
+	}
 	if cursor != "" {
-		reqURL += "?" + url.Values{"cursor": {cursor}}.Encode()
+		query.Set("cursor", cursor)
+	}
+
+	reqURL := baseURL + path
+	if len(query) > 0 {
+		reqURL += "?" + query.Encode()
 	}
 
 	req, err := http.NewRequest(http.MethodGet, reqURL, nil)

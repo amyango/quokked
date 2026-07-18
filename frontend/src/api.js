@@ -13,10 +13,14 @@ async function getJSON(path) {
   return res.json()
 }
 
-export function fetchTasks() {
-  return getJSON('/api/tasks')
+export function fetchTasksForProject(projectId) {
+  return getJSON(`/api/tasks?project_id=${encodeURIComponent(projectId)}`)
 }
 
 export function fetchProjects() {
   return getJSON('/api/projects')
+}
+
+export function fetchSettings() {
+  return getJSON('/api/settings')
 }

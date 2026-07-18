@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Local config (default homepage project(s), etc.)
+config/settings.json
+!config/settings.example.json
+
 # Dependencies
 node_modules/
 
