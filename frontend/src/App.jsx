@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchProjects, fetchSettings, fetchTasksForProject } from './api'
+import {
+  fetchPinnedCompleted,
+  fetchProjects,
+  fetchSettings,
+  fetchTasksForProject,
+  updateTaskLabels,
+} from './api'
 import { GROUP_OPTIONS, groupTasks } from './grouping'
+import TaskCard from './TaskCard'
 import './App.css'
 
 const ADDED_PROJECTS_KEY = 'quokked.addedProjectIds'
+const PIN_LABEL = 'pin'
 
 // Non-default projects a user adds from the bottom bar persist across
 // reloads, so they don't have to re-add them every time they open the app.
@@ -20,20 +28,30 @@ function saveAddedProjectIds(ids) {
   localStorage.setItem(ADDED_PROJECTS_KEY, JSON.stringify([...ids]))
 }
 
+function isPinned(task) {
+  return task.labels?.includes(PIN_LABEL)
+}
+
 export default function App() {
   const [projects, setProjects] = useState([])
   const [defaultProjectNames, setDefaultProjectNames] = useState([])
   const [addedProjectIds, setAddedProjectIds] = useState(loadAddedProjectIds)
   const [tasksByProject, setTasksByProject] = useState({}) // projectId -> Task[]
+  const [pinnedCompleted, setPinnedCompleted] = useState([])
+  const [collaborators, setCollaborators] = useState({}) // uid -> { id, name, email }
+  const [draggingTaskId, setDraggingTaskId] = useState(null)
   const [groupBy, setGroupBy] = useState('project')
   const [status, setStatus] = useState('loading') // loading | ready | error
   const [error, setError] = useState(null)
+  const [actionError, setActionError] = useState(null)
 
   useEffect(() => {
-    Promise.all([fetchProjects(), fetchSettings()])
-      .then(([projects, settings]) => {
+    Promise.all([fetchProjects(), fetchSettings(), fetchPinnedCompleted()])
+      .then(([projects, settings, pinned]) => {
         setProjects(projects)
         setDefaultProjectNames(settings.defaultProjects || [])
+        setPinnedCompleted(pinned.tasks || [])
+        setCollaborators(pinned.collaborators || {})
         setStatus('ready')
       })
       .catch((err) => {
@@ -90,12 +108,98 @@ export default function App() {
   )
   const tasksLoaded = [...activeProjectIds].every((id) => id in tasksByProject)
 
+  const pinnedActiveTasks = useMemo(() => tasks.filter(isPinned), [tasks])
+  const boardTasks = useMemo(() => tasks.filter((t) => !isPinned(t)), [tasks])
+  const pinnedTasks = useMemo(() => {
+    const completed = [...pinnedCompleted].sort((a, b) =>
+      (b.completed_at || '').localeCompare(a.completed_at || ''),
+    )
+    return [...pinnedActiveTasks, ...completed]
+  }, [pinnedActiveTasks, pinnedCompleted])
+
   const groups = useMemo(
-    () => groupTasks(tasks, projects, groupBy),
-    [tasks, projects, groupBy],
+    () => groupTasks(boardTasks, projects, groupBy),
+    [boardTasks, projects, groupBy],
   )
 
   const otherProjects = projects.filter((p) => !defaultProjectIds.has(p.id))
+
+  function findTaskById(id) {
+    return tasks.find((t) => t.id === id) || pinnedCompleted.find((t) => t.id === id) || null
+  }
+
+  // Rewrites one task's cached labels in place, wherever it lives in
+  // tasksByProject, so pin/unpin is reflected without a full refetch.
+  function setActiveTaskLabels(taskId, labels) {
+    setTasksByProject((prev) => {
+      const next = { ...prev }
+      for (const projectId of Object.keys(next)) {
+        const idx = next[projectId].findIndex((t) => t.id === taskId)
+        if (idx === -1) continue
+        const list = [...next[projectId]]
+        list[idx] = { ...list[idx], labels }
+        next[projectId] = list
+        break
+      }
+      return next
+    })
+  }
+
+  async function pinTask(task) {
+    setActionError(null)
+    const previousLabels = task.labels || []
+    const newLabels = [...previousLabels, PIN_LABEL]
+    setActiveTaskLabels(task.id, newLabels)
+    try {
+      await updateTaskLabels(task.id, newLabels)
+    } catch (err) {
+      setActiveTaskLabels(task.id, previousLabels)
+      setActionError(err.message)
+    }
+  }
+
+  async function unpinTask(task) {
+    setActionError(null)
+    const previousLabels = task.labels || []
+    const newLabels = previousLabels.filter((l) => l !== PIN_LABEL)
+    if (task.checked) {
+      setPinnedCompleted((prev) => prev.filter((t) => t.id !== task.id))
+    } else {
+      setActiveTaskLabels(task.id, newLabels)
+    }
+    try {
+      await updateTaskLabels(task.id, newLabels)
+    } catch (err) {
+      if (task.checked) {
+        setPinnedCompleted((prev) => [...prev, task])
+      } else {
+        setActiveTaskLabels(task.id, previousLabels)
+      }
+      setActionError(err.message)
+    }
+  }
+
+  function handleDragStart(task) {
+    setDraggingTaskId(task.id)
+  }
+
+  function handleDragEnd() {
+    setDraggingTaskId(null)
+  }
+
+  function handleDropOnPinned(e) {
+    e.preventDefault()
+    const task = findTaskById(e.dataTransfer.getData('text/plain'))
+    if (task && !isPinned(task)) pinTask(task)
+    setDraggingTaskId(null)
+  }
+
+  function handleDropOnBoard(e) {
+    e.preventDefault()
+    const task = findTaskById(e.dataTransfer.getData('text/plain'))
+    if (task && isPinned(task)) unpinTask(task)
+    setDraggingTaskId(null)
+  }
 
   return (
     <div className="app">
@@ -121,6 +225,42 @@ export default function App() {
           Couldn't load tasks: {error}. Is the backend running on port 8080?
         </p>
       )}
+
+      {status === 'ready' && actionError && (
+        <p className="status status-error">
+          Couldn't save that change: {actionError}
+        </p>
+      )}
+
+      {status === 'ready' && (
+        <section
+          className="pinned-section"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDropOnPinned}
+        >
+          <h2>
+            Pinned <span className="count">{pinnedTasks.length}</span>
+          </h2>
+          {pinnedTasks.length === 0 ? (
+            <p className="pinned-empty">Drag a task here to pin it</p>
+          ) : (
+            <ul className="pinned-list">
+              {pinnedTasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  completedByName={task.checked ? collaborators[task.completed_by_uid]?.name : null}
+                  draggable
+                  dragging={draggingTaskId === task.id}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {status === 'ready' && activeProjectIds.size === 0 && (
         <p className="status">
           No default project configured. Set <code>defaultProjects</code> in{' '}
@@ -134,8 +274,11 @@ export default function App() {
         <p className="status">No open tasks 🎉</p>
       )}
 
-      {status === 'ready' && tasksLoaded && tasks.length > 0 && (
-        <div className="board">
+      {status === 'ready' && tasksLoaded && activeProjectIds.size > 0 && (
+        <div className="board" onDragOver={(e) => e.preventDefault()} onDrop={handleDropOnBoard}>
+          {boardTasks.length === 0 && tasks.length > 0 && (
+            <p className="status board-empty">Everything's pinned 📌</p>
+          )}
           {groups.map((group) => (
             <section className="column" key={group.key}>
               <h2>
@@ -143,17 +286,14 @@ export default function App() {
               </h2>
               <ul>
                 {group.tasks.map((task) => (
-                  <li key={task.id} className="task">
-                    <p className="task-content">{task.content}</p>
-                    <div className="task-meta">
-                      {task.due?.string && <span className="due">{task.due.string}</span>}
-                      {task.labels?.map((label) => (
-                        <span className="label" key={label}>
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  </li>
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    draggable
+                    dragging={draggingTaskId === task.id}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                  />
                 ))}
               </ul>
             </section>

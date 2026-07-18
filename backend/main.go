@@ -4,11 +4,18 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
+	"time"
 
 	"quokked/backend/internal/config"
 	"quokked/backend/internal/settings"
 	"quokked/backend/internal/todoist"
 )
+
+// pinnedCompletedLookback bounds how far back completed pinned tasks are
+// fetched from. The Todoist completed-tasks endpoint rejects windows over
+// 3 months, so this stays comfortably under that.
+const pinnedCompletedLookback = 89 * 24 * time.Hour
 
 func main() {
 	cfg := config.Load()
@@ -21,6 +28,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", handleHealth)
 	mux.HandleFunc("/api/tasks", handleTasks(client))
+	mux.HandleFunc("/api/tasks/", handleTaskUpdate(client))
+	mux.HandleFunc("/api/pinned/completed", handlePinnedCompleted(client))
 	mux.HandleFunc("/api/projects", handleProjects(client))
 	mux.HandleFunc("/api/settings", handleSettings)
 
@@ -40,7 +49,7 @@ func withCORS(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, PATCH, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -67,6 +76,85 @@ func handleTasks(client *todoist.Client) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, tasks)
+	}
+}
+
+// handleTaskUpdate handles PATCH /api/tasks/{id}, currently only used to
+// replace a task's label set (e.g. adding/removing "pin" when a card is
+// dragged between the pinned and unpinned sections).
+func handleTaskUpdate(client *todoist.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		taskID := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
+		if taskID == "" || strings.Contains(taskID, "/") {
+			http.Error(w, "invalid task id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Labels []string `json:"labels"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		task, err := client.UpdateTaskLabels(taskID, body.Labels)
+		if err != nil {
+			log.Printf("update task labels: %v", err)
+			http.Error(w, "failed to update task in Todoist", http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, http.StatusOK, task)
+	}
+}
+
+// handlePinnedCompleted returns tasks completed within the lookback window
+// that carry the "pin" label, plus a uid -> collaborator map so the
+// frontend can show who completed each one.
+func handlePinnedCompleted(client *todoist.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		const todoistTimeFormat = "2006-01-02T15:04:05"
+		now := time.Now().UTC()
+		since := now.Add(-pinnedCompletedLookback).Format(todoistTimeFormat)
+		until := now.Format(todoistTimeFormat)
+
+		tasks, err := client.FetchCompletedTasks("@pin", since, until)
+		if err != nil {
+			log.Printf("fetch pinned completed tasks: %v", err)
+			http.Error(w, "failed to fetch completed tasks from Todoist", http.StatusBadGateway)
+			return
+		}
+
+		collaborators := map[string]todoist.Collaborator{}
+		seenProjects := map[string]bool{}
+		for _, task := range tasks {
+			if task.ProjectID == "" || seenProjects[task.ProjectID] {
+				continue
+			}
+			seenProjects[task.ProjectID] = true
+			projectCollaborators, err := client.FetchCollaborators(task.ProjectID)
+			if err != nil {
+				log.Printf("fetch collaborators for project %s: %v", task.ProjectID, err)
+				continue
+			}
+			for _, c := range projectCollaborators {
+				collaborators[c.ID] = c
+			}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"tasks":         tasks,
+			"collaborators": collaborators,
+		})
 	}
 }
 

@@ -24,3 +24,19 @@ export function fetchProjects() {
 export function fetchSettings() {
   return getJSON('/api/settings')
 }
+
+export function fetchPinnedCompleted() {
+  return getJSON('/api/pinned/completed')
+}
+
+export async function updateTaskLabels(taskId, labels) {
+  const res = await fetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ labels }),
+  })
+  if (!res.ok) {
+    throw new Error(`update task ${taskId} failed: ${res.status}`)
+  }
+  return res.json()
+}
