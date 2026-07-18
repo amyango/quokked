@@ -10,6 +10,9 @@ node_modules/
 dist/
 build/
 
+# make restart logs
+.logs/
+
 # OS
 .DS_Store
 
