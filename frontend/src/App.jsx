@@ -1,205 +1,31 @@
-import { useEffect, useMemo, useState } from 'react'
-import {
-  fetchPinnedCompleted,
-  fetchProjects,
-  fetchSettings,
-  fetchTasksForProject,
-  updateTaskLabels,
-} from './api'
-import { GROUP_OPTIONS, groupTasks } from './grouping'
+import { GROUP_OPTIONS } from './grouping'
 import TaskCard from './TaskCard'
+import { useTaskBoard } from './useTaskBoard'
 import './App.css'
 
-const ADDED_PROJECTS_KEY = 'quokked.addedProjectIds'
-const PIN_LABEL = 'pin'
-
-// Non-default projects a user adds from the bottom bar persist across
-// reloads, so they don't have to re-add them every time they open the app.
-function loadAddedProjectIds() {
-  try {
-    const raw = localStorage.getItem(ADDED_PROJECTS_KEY)
-    return raw ? new Set(JSON.parse(raw)) : new Set()
-  } catch {
-    return new Set()
-  }
-}
-
-function saveAddedProjectIds(ids) {
-  localStorage.setItem(ADDED_PROJECTS_KEY, JSON.stringify([...ids]))
-}
-
-function isPinned(task) {
-  return task.labels?.includes(PIN_LABEL)
-}
-
 export default function App() {
-  const [projects, setProjects] = useState([])
-  const [defaultProjectNames, setDefaultProjectNames] = useState([])
-  const [addedProjectIds, setAddedProjectIds] = useState(loadAddedProjectIds)
-  const [tasksByProject, setTasksByProject] = useState({}) // projectId -> Task[]
-  const [pinnedCompleted, setPinnedCompleted] = useState([])
-  const [collaborators, setCollaborators] = useState({}) // uid -> { id, name, email }
-  const [draggingTaskId, setDraggingTaskId] = useState(null)
-  const [groupBy, setGroupBy] = useState('project')
-  const [status, setStatus] = useState('loading') // loading | ready | error
-  const [error, setError] = useState(null)
-  const [actionError, setActionError] = useState(null)
-
-  useEffect(() => {
-    Promise.all([fetchProjects(), fetchSettings(), fetchPinnedCompleted()])
-      .then(([projects, settings, pinned]) => {
-        setProjects(projects)
-        setDefaultProjectNames(settings.defaultProjects || [])
-        setPinnedCompleted(pinned.tasks || [])
-        setCollaborators(pinned.collaborators || {})
-        setStatus('ready')
-      })
-      .catch((err) => {
-        setError(err.message)
-        setStatus('error')
-      })
-  }, [])
-
-  const defaultProjectIds = useMemo(() => {
-    const names = new Set(defaultProjectNames.map((name) => name.toLowerCase()))
-    return new Set(
-      projects.filter((p) => names.has(p.name.toLowerCase())).map((p) => p.id),
-    )
-  }, [projects, defaultProjectNames])
-
-  const activeProjectIds = useMemo(
-    () => new Set([...defaultProjectIds, ...addedProjectIds]),
-    [defaultProjectIds, addedProjectIds],
-  )
-
-  // Projects not listed as default are never fetched until the user adds
-  // them from the bottom bar; this effect fetches tasks only for whichever
-  // project ids just became active and aren't cached yet.
-  useEffect(() => {
-    const missing = [...activeProjectIds].filter((id) => !(id in tasksByProject))
-    if (missing.length === 0) return
-    Promise.all(missing.map((id) => fetchTasksForProject(id).then((tasks) => [id, tasks])))
-      .then((entries) => {
-        setTasksByProject((prev) => {
-          const next = { ...prev }
-          for (const [id, tasks] of entries) next[id] = tasks
-          return next
-        })
-      })
-      .catch((err) => {
-        setError(err.message)
-        setStatus('error')
-      })
-  }, [activeProjectIds, tasksByProject])
-
-  function toggleProject(id) {
-    setAddedProjectIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      saveAddedProjectIds(next)
-      return next
-    })
-  }
-
-  const tasks = useMemo(
-    () => [...activeProjectIds].flatMap((id) => tasksByProject[id] || []),
-    [activeProjectIds, tasksByProject],
-  )
-  const tasksLoaded = [...activeProjectIds].every((id) => id in tasksByProject)
-
-  const pinnedActiveTasks = useMemo(() => tasks.filter(isPinned), [tasks])
-  const boardTasks = useMemo(() => tasks.filter((t) => !isPinned(t)), [tasks])
-  const pinnedTasks = useMemo(() => {
-    const completed = [...pinnedCompleted].sort((a, b) =>
-      (b.completed_at || '').localeCompare(a.completed_at || ''),
-    )
-    return [...pinnedActiveTasks, ...completed]
-  }, [pinnedActiveTasks, pinnedCompleted])
-
-  const groups = useMemo(
-    () => groupTasks(boardTasks, projects, groupBy),
-    [boardTasks, projects, groupBy],
-  )
-
-  const otherProjects = projects.filter((p) => !defaultProjectIds.has(p.id))
-
-  function findTaskById(id) {
-    return tasks.find((t) => t.id === id) || pinnedCompleted.find((t) => t.id === id) || null
-  }
-
-  // Rewrites one task's cached labels in place, wherever it lives in
-  // tasksByProject, so pin/unpin is reflected without a full refetch.
-  function setActiveTaskLabels(taskId, labels) {
-    setTasksByProject((prev) => {
-      const next = { ...prev }
-      for (const projectId of Object.keys(next)) {
-        const idx = next[projectId].findIndex((t) => t.id === taskId)
-        if (idx === -1) continue
-        const list = [...next[projectId]]
-        list[idx] = { ...list[idx], labels }
-        next[projectId] = list
-        break
-      }
-      return next
-    })
-  }
-
-  async function pinTask(task) {
-    setActionError(null)
-    const previousLabels = task.labels || []
-    const newLabels = [...previousLabels, PIN_LABEL]
-    setActiveTaskLabels(task.id, newLabels)
-    try {
-      await updateTaskLabels(task.id, newLabels)
-    } catch (err) {
-      setActiveTaskLabels(task.id, previousLabels)
-      setActionError(err.message)
-    }
-  }
-
-  async function unpinTask(task) {
-    setActionError(null)
-    const previousLabels = task.labels || []
-    const newLabels = previousLabels.filter((l) => l !== PIN_LABEL)
-    if (task.checked) {
-      setPinnedCompleted((prev) => prev.filter((t) => t.id !== task.id))
-    } else {
-      setActiveTaskLabels(task.id, newLabels)
-    }
-    try {
-      await updateTaskLabels(task.id, newLabels)
-    } catch (err) {
-      if (task.checked) {
-        setPinnedCompleted((prev) => [...prev, task])
-      } else {
-        setActiveTaskLabels(task.id, previousLabels)
-      }
-      setActionError(err.message)
-    }
-  }
-
-  function handleDragStart(task) {
-    setDraggingTaskId(task.id)
-  }
-
-  function handleDragEnd() {
-    setDraggingTaskId(null)
-  }
-
-  function handleDropOnPinned(e) {
-    e.preventDefault()
-    const task = findTaskById(e.dataTransfer.getData('text/plain'))
-    if (task && !isPinned(task)) pinTask(task)
-    setDraggingTaskId(null)
-  }
-
-  function handleDropOnBoard(e) {
-    e.preventDefault()
-    const task = findTaskById(e.dataTransfer.getData('text/plain'))
-    if (task && isPinned(task)) unpinTask(task)
-    setDraggingTaskId(null)
-  }
+  const {
+    collaborators,
+    draggingTaskId,
+    groupBy,
+    setGroupBy,
+    status,
+    error,
+    actionError,
+    activeProjectIds,
+    tasks,
+    tasksLoaded,
+    pinnedTasks,
+    boardTasks,
+    groups,
+    otherProjects,
+    addedProjectIds,
+    toggleProject,
+    handleDragStart,
+    handleDragEnd,
+    handleDropOnPinned,
+    handleDropOnBoard,
+  } = useTaskBoard()
 
   return (
     <div className="app">

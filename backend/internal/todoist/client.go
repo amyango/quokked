@@ -5,11 +5,18 @@ package todoist
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
+
+// ErrBadSyncToken indicates the Todoist API rejected a sync_token (HTTP
+// 400), typically because it's stale or malformed. Callers should retry
+// with sync_token="*" to start a fresh full sync.
+var ErrBadSyncToken = errors.New("todoist: sync token rejected")
 
 const baseURL = "https://api.todoist.com/api/v1"
 
@@ -234,6 +241,32 @@ func (c *Client) post(path string, body interface{}, out interface{}) error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("todoist API returned status %d", resp.StatusCode)
+	}
+
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// postForm submits a form-encoded POST, needed for the sync endpoint (the
+// rest of the API is JSON-bodied, hence the separate helper from post).
+func (c *Client) postForm(path string, form url.Values, out interface{}) error {
+	req, err := http.NewRequest(http.MethodPost, baseURL+path, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusBadRequest {
+		return ErrBadSyncToken
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("todoist API returned status %d", resp.StatusCode)
 	}

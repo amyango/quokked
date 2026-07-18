@@ -1,27 +1,27 @@
 # Quokked
 
-Visualizes and groups the user's Todoist tasks. See [README.md](README.md) for project vision/scope. This file is operational notes for working in this repo.
+Visualizes and groups the user's Todoist tasks. See [README.md](README.md) for project vision/scope. This file is operational notes for working in this repo. Directory-specific notes live in `backend/CLAUDE.md` and `frontend/CLAUDE.md` — check those when working in those trees.
 
 ## Stack
 
-- `backend/` — Go, stdlib `net/http` only (no framework, no deps). `main.go` wires routes; `internal/todoist` is the Todoist API client; `internal/config` loads `.env`; `internal/settings` loads `config/settings.json`.
-- `frontend/` — React + Vite, plain fetch (no data-fetching library). `src/api.js` calls the backend; `src/grouping.js` has the group-by logic; `src/App.jsx` is the only component so far.
+- `backend/` — Go, stdlib `net/http` only (no framework, no deps). See `backend/CLAUDE.md`.
+- `frontend/` — React + Vite, plain fetch (no data-fetching library). See `frontend/CLAUDE.md`.
 
 ## Run it
 
 ```
-make dev
+make restart
 ```
 
-Starts backend (`:8080`) and frontend (`:5173`) together, installs frontend deps on first run, stops both on Ctrl+C. Requires `backend/.env` to already exist (see Credentials below) or it exits with a message.
+Starts backend (`:8080`) and frontend (`:5173`) together in the background, logging to `.logs/`, killing whatever's already on those ports first — safe to run again after every change. `make stop` stops both, `make logs` tails both log files. Requires `backend/.env` to already exist (see Credentials below) or it exits with a message.
 
-## Gotchas specific to this machine / project
+**Default to `make restart`** when you (Claude) need the servers running — e.g. to hit the API or check the UI after a change. It's non-blocking, so you keep control of the shell rather than needing a foreground process you'd have to background yourself. Only run backend or frontend manually (`cd backend && GOWORK=off go run .` / `cd frontend && npm run dev`) when isolating a problem to one side — e.g. checking backend-only output without frontend noise, or vice versa.
 
-- **`go.work` conflict**: there's a Go workspace file elsewhere on this machine that lists other projects and does not include this repo, so plain `go build`/`go run`/`go mod`/`gofmt` in `backend/` fail with "directory prefix . does not contain modules listed in go.work". Always prefix Go commands with `GOWORK=off` (the Makefile already does this for `make dev`). Don't add this repo to that workspace file without asking — it's shared config for other unrelated projects.
-- **Go is old (1.19)**: don't use stdlib features that need 1.22+ (e.g. method-pattern routing in `http.ServeMux`). Generics are fine (1.18+).
-- **Todoist API version**: use `https://api.todoist.com/api/v1` — NOT `rest/v2`, which is dead and returns `410 Gone`. v1 list endpoints (`/tasks`, `/projects`) return `{"results": [...], "next_cursor": ...}` and are paginated (50/page); `internal/todoist/client.go`'s `fetchAllPages` loops on `cursor` until `next_cursor` is null. Field names differ from the old v2 docs you might find: `checked` (not `is_completed`), `note_count` (not `comment_count`), `added_at` (not `created_at`), `inbox_project` (not `is_inbox_project`); no per-task/project `url` field.
-- **Node wasn't preinstalled** on this machine; it was installed via `brew install node` during setup. If it's ever missing again, that's the fix.
-- **LAN access is intentional**: Vite has `host: true` and `allowedHosts: true`, the backend CORS middleware reflects whatever `Origin` header it receives, and the frontend's API base defaults to `http://${window.location.hostname}:8080` rather than a hardcoded `localhost`. This lets the user run `make dev` on one machine and browse from another device on the LAN by hostname or IP. There's no auth on the API — anyone on the network can read the tasks. Don't tighten this without checking with the user, and don't expose it beyond a trusted LAN.
+`make dev` runs both in the foreground instead (Ctrl+C stops both) — that's for the user's interactive terminal use, not for Claude to invoke.
+
+## LAN access is intentional
+
+Vite has `host: true` and `allowedHosts: true`, the backend CORS middleware reflects whatever `Origin` header it receives, and the frontend's API base defaults to `http://${window.location.hostname}:8080` rather than a hardcoded `localhost`. This lets the user run `make dev` on one machine and browse from another device on the LAN by hostname or IP. There's no auth on the API — anyone on the network can read the tasks. Don't tighten this without checking with the user, and don't expose it beyond a trusted LAN.
 
 ## Credentials
 
@@ -29,8 +29,24 @@ Starts backend (`:8080`) and frontend (`:5173`) together, installs frontend deps
 
 ## Default homepage project(s)
 
-`config/settings.json` (gitignored, like `backend/.env`) holds `{"defaultProjects": ["Name"]}` — project name(s), matched case-insensitively against `/api/projects`, to show on the homepage by default. Copy from `config/settings.example.json` to set up a fresh checkout. Backend reads it via `internal/settings` (path is `../config/settings.json`, relative to the `backend/` working directory) and serves it at `GET /api/settings`. `GET /api/tasks` now takes an optional `?project_id=` filter so the frontend only fetches tasks for active projects. The frontend (`App.jsx`) fetches tasks for default projects on load; projects not in the default list appear in a bottom bar and are only fetched when the user clicks to add them. Which non-default projects are added persists across reloads via `localStorage` (key `quokked.addedProjectIds`), not in the config file.
+`config/settings.json` (gitignored, like `backend/.env`) holds `{"defaultProjects": ["Name"]}` — project name(s), matched case-insensitively against `/api/projects`, to show on the homepage by default. Copy from `config/settings.example.json` to set up a fresh checkout. This spans both sides: backend loading/serving is in `backend/CLAUDE.md`, frontend fetch/persistence behavior is in `frontend/CLAUDE.md`.
 
 ## Git
 
 `origin` remote is already set to `https://github.com/amyango/quokked` and `main` is configured to track `origin/main`, but nothing has been pushed yet (as of the commits made in this repo's initial setup session). Don't assume it's safe to push without checking with the user first.
+
+## Conventions for concurrent work
+
+This repo is organized so multiple agents/sessions can work in parallel:
+
+- Keep this file lean and cross-cutting. Directory-specific guidance lives in
+  that directory's CLAUDE.md (`backend/CLAUDE.md`, `frontend/CLAUDE.md`) —
+  add new notes there, not here, unless they affect everyone.
+- When adding functionality, put it in a new focused file/module rather than
+  growing an existing large one (e.g. `backend/main.go` only wires routes;
+  handlers live in `backend/handlers.go`, the background poller in
+  `backend/poller.go`; frontend data/mutation logic lives in
+  `frontend/src/useTaskBoard.js`, not `App.jsx`). A change's diff should stay
+  within files related to that change.
+- If a file or CLAUDE.md section keeps being edited by unrelated tasks,
+  that's the signal to split it further.

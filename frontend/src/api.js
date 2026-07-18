@@ -29,6 +29,10 @@ export function fetchPinnedCompleted() {
   return getJSON('/api/pinned/completed')
 }
 
+export function createEventsSource() {
+  return new EventSource(`${API_BASE}/api/events`)
+}
+
 export async function updateTaskLabels(taskId, labels) {
   const res = await fetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {
     method: 'PATCH',
