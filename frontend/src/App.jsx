@@ -3,6 +3,7 @@ import { GROUP_OPTIONS, groupBySection } from './grouping'
 import PinnedSection from './PinnedSection'
 import SettingsPanel from './SettingsPanel'
 import TaskCard from './TaskCard'
+import TaskDetailModal from './TaskDetailModal'
 import { colorsForScheme } from './theme'
 import { useTaskBoard } from './useTaskBoard'
 import './App.css'
@@ -37,6 +38,7 @@ export default function App() {
   } = useTaskBoard()
 
   const [showSettings, setShowSettings] = useState(false)
+  const [openTaskId, setOpenTaskId] = useState(null)
 
   // Exposes the active card accent color scheme as --accent-0..--accent-5
   // custom properties; TaskCard picks one per project via hashString.
@@ -44,6 +46,19 @@ export default function App() {
     const colors = colorsForScheme(settings.colorScheme)
     return Object.fromEntries(colors.map((color, i) => [`--accent-${i}`, color]))
   }, [settings.colorScheme])
+
+  // Looked up by id (rather than storing the clicked task object directly)
+  // so the modal always reflects the latest fetched data, and so it closes
+  // itself gracefully if the task disappears from view (e.g. completed and
+  // unpinned) between clicking it and a background refetch landing.
+  const openTask = useMemo(() => {
+    if (!openTaskId) return null
+    return (
+      tasks.find((t) => t.id === openTaskId) ||
+      pinnedTasks.find((t) => t.id === openTaskId) ||
+      null
+    )
+  }, [openTaskId, tasks, pinnedTasks])
 
   return (
     <div className="app" style={accentStyle}>
@@ -73,6 +88,18 @@ export default function App() {
         />
       )}
 
+      {openTask && (
+        <TaskDetailModal
+          task={openTask}
+          projectName={projects.find((p) => p.id === openTask.project_id)?.name}
+          sectionName={sectionsById.get(openTask.section_id)?.name}
+          completedByName={
+            openTask.checked ? collaborators[openTask.completed_by_uid]?.name : null
+          }
+          onClose={() => setOpenTaskId(null)}
+        />
+      )}
+
       {status === 'loading' && <p className="status">Loading tasks…</p>}
       {status === 'error' && (
         <p className="status status-error">
@@ -95,6 +122,7 @@ export default function App() {
           handleDragEnd={handleDragEnd}
           handleDropOnPinned={handleDropOnPinned}
           onComplete={completeTask}
+          onOpenDetail={(task) => setOpenTaskId(task.id)}
         />
       )}
 
@@ -140,6 +168,7 @@ export default function App() {
                             onDragStart={handleDragStart}
                             onDragEnd={handleDragEnd}
                             onComplete={completeTask}
+                            onOpenDetail={(task) => setOpenTaskId(task.id)}
                           />
                         ))}
                       </ul>

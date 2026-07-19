@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+
 const AVATAR_COLORS = ['#e07a5f', '#3d5a80', '#81b29a', '#f2cc8f', '#9d8dc9', '#588157']
 
 function hashString(str) {
@@ -32,6 +34,7 @@ export default function TaskCard({
   onDragStart,
   onDragEnd,
   onComplete,
+  onOpenDetail,
 }) {
   const completed = task.checked
   // Card accent: deterministic pick from the active color scheme's 6 colors
@@ -39,17 +42,34 @@ export default function TaskCard({
   // so every card in a project gets the same accent — same hashing approach
   // as Avatar above, just keyed differently.
   const accentIndex = hashString(task.project_id || '') % 6
+  // Clicking a card opens the detail modal, but a drag-and-drop interaction
+  // (pin/unpin) shouldn't also trigger it. Native HTML5 drag already
+  // suppresses the click event that would otherwise fire on the same
+  // mouseup, but this ref is a belt-and-suspenders guard against browser
+  // quirks: set on dragstart, cleared shortly after dragend so it only
+  // swallows a click that's part of the same drag gesture.
+  const draggedRef = useRef(false)
   return (
     <li
       className={`task${completed ? ' completed' : ''}${dragging ? ' dragging' : ''}`}
       style={{ '--task-accent': `var(--accent-${accentIndex})` }}
       draggable={draggable}
       onDragStart={(e) => {
+        draggedRef.current = true
         e.dataTransfer.setData('text/plain', task.id)
         e.dataTransfer.effectAllowed = 'move'
         onDragStart?.(task)
       }}
-      onDragEnd={onDragEnd}
+      onDragEnd={(e) => {
+        onDragEnd?.(e)
+        setTimeout(() => {
+          draggedRef.current = false
+        }, 0)
+      }}
+      onClick={() => {
+        if (draggedRef.current) return
+        onOpenDetail?.(task)
+      }}
     >
       {!completed && onComplete && (
         <button
