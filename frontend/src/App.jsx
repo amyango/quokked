@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { GROUP_OPTIONS, groupBySection } from './grouping'
 import PinnedSection from './PinnedSection'
 import SettingsPanel from './SettingsPanel'
 import TaskCard from './TaskCard'
+import { colorsForScheme } from './theme'
 import { useTaskBoard } from './useTaskBoard'
 import './App.css'
 
@@ -37,8 +38,15 @@ export default function App() {
 
   const [showSettings, setShowSettings] = useState(false)
 
+  // Exposes the active card accent color scheme as --accent-0..--accent-5
+  // custom properties; TaskCard picks one per project via hashString.
+  const accentStyle = useMemo(() => {
+    const colors = colorsForScheme(settings.colorScheme)
+    return Object.fromEntries(colors.map((color, i) => [`--accent-${i}`, color]))
+  }, [settings.colorScheme])
+
   return (
-    <div className="app">
+    <div className="app" style={accentStyle}>
       <header className="app-header">
         <h1>Quokked</h1>
         <div className="group-controls">

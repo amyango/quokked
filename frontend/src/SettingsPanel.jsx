@@ -1,10 +1,18 @@
 import { useState } from 'react'
 import { fetchSectionsForProject } from './api'
+import { COLOR_SCHEMES, DEFAULT_COLOR_SCHEME } from './theme'
+
+const THEME_OPTIONS = [
+  { value: '', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+]
 
 // Settings pane for editing config/settings.json from the UI: which
-// projects show on the homepage by default, and which sections within a
-// project are hidden from the board. Owns its own draft state and only
-// calls back to the parent (via onSave) once the user confirms.
+// projects show on the homepage by default, which sections within a
+// project are hidden from the board, and the light/dark theme + card
+// accent color scheme. Owns its own draft state and only calls back to
+// the parent (via onSave) once the user confirms.
 export default function SettingsPanel({ projects, settings, onClose, onSave }) {
   const [draftDefaults, setDraftDefaults] = useState(
     () => new Set(settings.defaultProjects.map((name) => name.toLowerCase())),
@@ -16,6 +24,10 @@ export default function SettingsPanel({ projects, settings, onClose, onSave }) {
     }
     return map
   })
+  const [draftTheme, setDraftTheme] = useState(settings.theme || '')
+  const [draftColorScheme, setDraftColorScheme] = useState(
+    settings.colorScheme || DEFAULT_COLOR_SCHEME,
+  )
   const [expandedProjectId, setExpandedProjectId] = useState(null)
   const [sectionsByProject, setSectionsByProject] = useState({})
   const [sectionsLoading, setSectionsLoading] = useState(false)
@@ -71,7 +83,12 @@ export default function SettingsPanel({ projects, settings, onClose, onSave }) {
       if (sectionIds.size > 0) disabledSections[projectId] = [...sectionIds]
     }
     try {
-      await onSave({ defaultProjects, disabledSections })
+      await onSave({
+        defaultProjects,
+        disabledSections,
+        theme: draftTheme,
+        colorScheme: draftColorScheme,
+      })
       onClose()
     } catch (err) {
       setSaveError(err.message)
@@ -96,6 +113,51 @@ export default function SettingsPanel({ projects, settings, onClose, onSave }) {
         </p>
 
         {saveError && <p className="status status-error">{saveError}</p>}
+
+        <div className="settings-section-group">
+          <h3 className="settings-subheading">Theme</h3>
+          <div className="settings-theme-options">
+            {THEME_OPTIONS.map((option) => (
+              <label key={option.value} className="settings-radio">
+                <input
+                  type="radio"
+                  name="theme"
+                  value={option.value}
+                  checked={draftTheme === option.value}
+                  onChange={() => setDraftTheme(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="settings-section-group">
+          <h3 className="settings-subheading">Card accent colors</h3>
+          <div className="settings-color-schemes">
+            {Object.entries(COLOR_SCHEMES).map(([name, colors]) => (
+              <button
+                key={name}
+                type="button"
+                className={`settings-color-scheme${draftColorScheme === name ? ' active' : ''}`}
+                onClick={() => setDraftColorScheme(name)}
+                aria-pressed={draftColorScheme === name}
+                title={name}
+              >
+                <span className="settings-color-swatches">
+                  {colors.map((color, i) => (
+                    <span
+                      key={i}
+                      className="settings-color-swatch"
+                      style={{ background: color }}
+                    />
+                  ))}
+                </span>
+                <span className="settings-color-scheme-name">{name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         <ul className="settings-project-list">
           {projects.map((project) => {

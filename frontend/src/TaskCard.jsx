@@ -34,9 +34,15 @@ export default function TaskCard({
   onComplete,
 }) {
   const completed = task.checked
+  // Card accent: deterministic pick from the active color scheme's 6 colors
+  // (exposed as --accent-0..--accent-5 on .app in App.jsx), keyed by project
+  // so every card in a project gets the same accent — same hashing approach
+  // as Avatar above, just keyed differently.
+  const accentIndex = hashString(task.project_id || '') % 6
   return (
     <li
       className={`task${completed ? ' completed' : ''}${dragging ? ' dragging' : ''}`}
+      style={{ '--task-accent': `var(--accent-${accentIndex})` }}
       draggable={draggable}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', task.id)
