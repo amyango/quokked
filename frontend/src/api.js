@@ -61,6 +61,22 @@ export async function updateTaskLabels(taskId, labels) {
   return res.json()
 }
 
+// updateTaskDue moves a pinned task's due date between the Today and
+// Coming up subsections. `due` is the task's due state *before* this
+// mutation, so the backend can tell whether it's recurring (see
+// backend/handlers.go's applyDueAction).
+export async function updateTaskDue(taskId, dueAction, due) {
+  const res = await fetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dueAction, due: due || null }),
+  })
+  if (!res.ok) {
+    throw new Error(`update task ${taskId} due date failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function completeTask(taskId) {
   const res = await fetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {
     method: 'PATCH',

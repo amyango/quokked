@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -39,8 +40,10 @@ func handleTasks(client *todoist.Client) http.HandlerFunc {
 
 // handleTaskUpdate handles PATCH /api/tasks/{id}: replacing a task's label
 // set (e.g. adding/removing "pin" when a card is dragged between the pinned
-// and unpinned sections), or marking it complete when {"complete": true} is
-// sent (e.g. the complete button on a task card).
+// and unpinned sections), marking it complete when {"complete": true} is
+// sent (e.g. the complete button on a task card), or moving its due date
+// when {"dueAction": ...} is sent (e.g. dragging a pinned card between the
+// Today/Coming up subsections — see applyDueAction).
 func handleTaskUpdate(client *todoist.Client, poke chan<- struct{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPatch {
@@ -54,8 +57,10 @@ func handleTaskUpdate(client *todoist.Client, poke chan<- struct{}) http.Handler
 		}
 
 		var body struct {
-			Labels   []string `json:"labels,omitempty"`
-			Complete bool     `json:"complete,omitempty"`
+			Labels    []string     `json:"labels,omitempty"`
+			Complete  bool         `json:"complete,omitempty"`
+			DueAction string       `json:"dueAction,omitempty"`
+			Due       *todoist.Due `json:"due,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -76,6 +81,21 @@ func handleTaskUpdate(client *todoist.Client, poke chan<- struct{}) http.Handler
 			return
 		}
 
+		if body.DueAction != "" {
+			task, err := applyDueAction(client, taskID, body.DueAction, body.Due)
+			if err != nil {
+				log.Printf("update task due date: %v", err)
+				http.Error(w, "failed to update task due date in Todoist", http.StatusBadGateway)
+				return
+			}
+			select {
+			case poke <- struct{}{}:
+			default:
+			}
+			writeJSON(w, http.StatusOK, task)
+			return
+		}
+
 		task, err := client.UpdateTaskLabels(taskID, body.Labels)
 		if err != nil {
 			log.Printf("update task labels: %v", err)
@@ -87,6 +107,35 @@ func handleTaskUpdate(client *todoist.Client, poke chan<- struct{}) http.Handler
 		default:
 		}
 		writeJSON(w, http.StatusOK, task)
+	}
+}
+
+// applyDueAction moves a task's due date for the pinned Today/Coming up
+// drag-and-drop (issue #7). due is the task's *current* due state, as the
+// frontend already has it cached — this exists to avoid an extra
+// fetch-before-write round trip, not to let the caller dictate the result.
+//
+// "pull_to_today" sets the due date to today; if the task is recurring,
+// PullRecurringTaskToToday preserves its recurrence pattern instead of the
+// plain due_string update (which would silently clobber it). "release_from_today"
+// undoes that: clears the due date, or for a recurring task, re-submits its
+// own due string so Todoist recomputes the next occurrence rather than
+// leaving it dateless.
+func applyDueAction(client *todoist.Client, taskID, action string, due *todoist.Due) (*todoist.Task, error) {
+	recurring := due != nil && due.IsRecurring
+	switch action {
+	case "pull_to_today":
+		if recurring {
+			return client.PullRecurringTaskToToday(taskID, *due)
+		}
+		return client.UpdateTaskDue(taskID, "today")
+	case "release_from_today":
+		if recurring {
+			return client.UpdateTaskDue(taskID, due.String)
+		}
+		return client.UpdateTaskDue(taskID, "no date")
+	default:
+		return nil, fmt.Errorf("unknown due action %q", action)
 	}
 }
 

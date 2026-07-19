@@ -4,6 +4,7 @@ package todoist
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -202,6 +203,101 @@ func (c *Client) CompleteTask(taskID string) error {
 		return fmt.Errorf("complete task: %w", err)
 	}
 	return nil
+}
+
+// FetchTask fetches a single task by id.
+func (c *Client) FetchTask(taskID string) (*Task, error) {
+	var task Task
+	if err := c.get("/tasks/"+taskID, url.Values{}, "", &task); err != nil {
+		return nil, fmt.Errorf("fetch task: %w", err)
+	}
+	return &task, nil
+}
+
+// UpdateTaskDue sets a task's due date via natural-language due_string —
+// "today" to pin it to today, "no date" to clear it entirely (both verified
+// against the live API; Todoist's REST update has no dedicated
+// remove-due-date field, but its due_string date parser recognizes "no
+// date"), or a task's own recurring phrase (e.g. "every monday") re-sent
+// as-is to make Todoist recompute its next occurrence from today, deferring
+// to its recurrence engine rather than reimplementing it here.
+//
+// This can't be used to move a *recurring* task's date to today, though:
+// due_string is a wholesale replacement of the stored due string, so
+// sending "today" on a recurring task silently drops is_recurring and
+// overwrites the stored recurring phrase — see PullRecurringTaskToToday for
+// that case.
+func (c *Client) UpdateTaskDue(taskID, dueString string) (*Task, error) {
+	var task Task
+	body := map[string]interface{}{"due_string": dueString}
+	if err := c.post("/tasks/"+taskID, body, &task); err != nil {
+		return nil, fmt.Errorf("update task due date: %w", err)
+	}
+	return &task, nil
+}
+
+// PullRecurringTaskToToday moves a recurring task's concrete due date to
+// today while preserving its recurrence pattern (due.string/is_recurring),
+// preserving the time-of-day if the task's due date carries one. The
+// plain REST due_string update can't do this (see UpdateTaskDue), so this
+// goes through the Sync API's item_update command instead, which accepts a
+// raw due object and lets date and recurrence pattern be set independently
+// of one another.
+func (c *Client) PullRecurringTaskToToday(taskID string, due Due) (*Task, error) {
+	date := time.Now().Format("2006-01-02")
+	if idx := strings.Index(due.Date, "T"); idx != -1 {
+		date += due.Date[idx:]
+	}
+	dueArgs := map[string]interface{}{
+		"date":         date,
+		"string":       due.String,
+		"is_recurring": true,
+		"lang":         "en",
+	}
+	if due.Timezone != "" {
+		dueArgs["timezone"] = due.Timezone
+	}
+	cmd := map[string]interface{}{
+		"type": "item_update",
+		"uuid": newUUID(),
+		"args": map[string]interface{}{
+			"id":  taskID,
+			"due": dueArgs,
+		},
+	}
+	cmdsJSON, err := json.Marshal([]interface{}{cmd})
+	if err != nil {
+		return nil, fmt.Errorf("pull recurring task to today: %w", err)
+	}
+	form := url.Values{"commands": {string(cmdsJSON)}}
+	var resp struct {
+		SyncStatus map[string]json.RawMessage `json:"sync_status"`
+	}
+	if err := c.postForm("/sync", form, &resp); err != nil {
+		return nil, fmt.Errorf("pull recurring task to today: %w", err)
+	}
+	for _, status := range resp.SyncStatus {
+		var ok string
+		if json.Unmarshal(status, &ok) == nil && ok == "ok" {
+			continue
+		}
+		return nil, fmt.Errorf("pull recurring task to today: sync command rejected: %s", status)
+	}
+	// The Sync API doesn't echo back the updated task, so fetch it fresh.
+	return c.FetchTask(taskID)
+}
+
+// newUUID generates a random v4 UUID for the Sync API's per-command
+// idempotency key. Not imported from a package since the backend has a
+// stdlib-only, no-deps policy.
+func newUUID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("quokked-%d", time.Now().UnixNano())
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 func fetchAllPages[T any](c *Client, path string, params url.Values) ([]T, error) {

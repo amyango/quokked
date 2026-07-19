@@ -24,6 +24,8 @@ export default function App() {
     tasks,
     tasksLoaded,
     pinnedTasks,
+    todayPinnedTasks,
+    comingUpPinnedTasks,
     boardTasks,
     groups,
     sectionsById,
@@ -34,6 +36,8 @@ export default function App() {
     handleDragStart,
     handleDragEnd,
     handleDropOnPinned,
+    handleDropOnPinnedToday,
+    handleDropOnPinnedComingUp,
     handleDropOnBoard,
   } = useTaskBoard()
 
@@ -136,12 +140,15 @@ export default function App() {
 
       {status === 'ready' && (
         <PinnedSection
-          pinnedTasks={pinnedTasks}
+          todayTasks={todayPinnedTasks}
+          comingUpTasks={comingUpPinnedTasks}
           collaborators={collaborators}
           draggingTaskId={draggingTaskId}
           handleDragStart={handleDragStart}
           handleDragEnd={handleDragEnd}
           handleDropOnPinned={handleDropOnPinned}
+          handleDropOnPinnedToday={handleDropOnPinnedToday}
+          handleDropOnPinnedComingUp={handleDropOnPinnedComingUp}
           onComplete={completeTask}
           onOpenDetail={(task) => setOpenTaskId(task.id)}
         />

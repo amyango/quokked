@@ -5,13 +5,23 @@ import TaskCard from './TaskCard'
 // fullscreen mode so a long pinned list can be worked with at a larger size.
 // Drag-and-drop wiring (handlers passed in via props) comes straight from
 // useTaskBoard and is unchanged between collapsed/expanded states.
+//
+// Pinned tasks are split into two subsections — Today and Coming up — each
+// its own drop target so dragging a card between them moves its due date
+// (see useTaskBoard's pullTaskToToday/releaseTaskFromToday). The outer
+// section's onDrop is a fallback for drops that land outside either
+// subsection (e.g. a fresh pin dropped on the header/padding); subsection
+// drops stop propagation so they aren't also handled there.
 export default function PinnedSection({
-  pinnedTasks,
+  todayTasks,
+  comingUpTasks,
   collaborators,
   draggingTaskId,
   handleDragStart,
   handleDragEnd,
   handleDropOnPinned,
+  handleDropOnPinnedToday,
+  handleDropOnPinnedComingUp,
   onComplete,
   onOpenDetail,
 }) {
@@ -26,6 +36,41 @@ export default function PinnedSection({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [expanded])
 
+  const pinnedCount = todayTasks.length + comingUpTasks.length
+
+  function renderTaskCard(task) {
+    return (
+      <TaskCard
+        key={task.id}
+        task={task}
+        completedByName={task.checked ? collaborators[task.completed_by_uid]?.name : null}
+        draggable
+        dragging={draggingTaskId === task.id}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onComplete={onComplete}
+        onOpenDetail={onOpenDetail}
+      />
+    )
+  }
+
+  function renderSubsection(title, tasks, onDrop) {
+    return (
+      <div className="pinned-subsection" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+        <h3 className="pinned-subsection-heading">
+          {title} <span className="count">{tasks.length}</span>
+        </h3>
+        {tasks.length === 0 ? (
+          <p className="pinned-subsection-empty">Drop a task here</p>
+        ) : (
+          <ul className={expanded ? 'pinned-list pinned-list-expanded' : 'pinned-list'}>
+            {tasks.map((task) => renderTaskCard(task))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
   return (
     <section
       className={`pinned-section${expanded ? ' pinned-section-expanded' : ''}`}
@@ -33,7 +78,7 @@ export default function PinnedSection({
       onDrop={handleDropOnPinned}
     >
       <h2>
-        Pinned <span className="count">{pinnedTasks.length}</span>
+        Pinned <span className="count">{pinnedCount}</span>
         <button
           type="button"
           className="pinned-expand-toggle"
@@ -44,25 +89,9 @@ export default function PinnedSection({
           {expanded ? '⤡' : '⤢'}
         </button>
       </h2>
-      {pinnedTasks.length === 0 ? (
-        <p className="pinned-empty">Drag a task here to pin it</p>
-      ) : (
-        <ul className={expanded ? 'pinned-list pinned-list-expanded' : 'pinned-list'}>
-          {pinnedTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              completedByName={task.checked ? collaborators[task.completed_by_uid]?.name : null}
-              draggable
-              dragging={draggingTaskId === task.id}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onComplete={onComplete}
-              onOpenDetail={onOpenDetail}
-            />
-          ))}
-        </ul>
-      )}
+      {pinnedCount === 0 && <p className="pinned-empty">Drag a task here to pin it</p>}
+      {renderSubsection('Today', todayTasks, handleDropOnPinnedToday)}
+      {renderSubsection('Coming up', comingUpTasks, handleDropOnPinnedComingUp)}
     </section>
   )
 }

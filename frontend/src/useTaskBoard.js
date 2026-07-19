@@ -8,6 +8,7 @@ import {
   fetchSettings,
   fetchTasksForProject,
   saveSettings as saveSettingsRequest,
+  updateTaskDue,
   updateTaskLabels,
 } from './api'
 import { groupTasks } from './grouping'
@@ -32,6 +33,20 @@ function saveAddedProjectIds(ids) {
 
 function isPinned(task) {
   return task.labels?.includes(PIN_LABEL)
+}
+
+function todayISODate() {
+  const now = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+// A pinned task belongs in the "Today" subsection when its due date is
+// exactly today; everything else (no date, or a date in the past/future)
+// is "Coming up" — see PinnedSection.jsx.
+function isDueToday(task) {
+  const date = task.due?.date
+  return !!date && date.slice(0, 10) === todayISODate()
 }
 
 // Tasks in a disabled section are hidden from the board entirely (not just
@@ -289,6 +304,13 @@ export function useTaskBoard() {
     return [...pinnedActiveTasks, ...justCompletedOverlay, ...completed]
   }, [pinnedActiveTasks, pinnedCompleted, justCompletedPinned])
 
+  // Split for PinnedSection's Today / Coming up subsections (issue #7).
+  const todayPinnedTasks = useMemo(() => pinnedTasks.filter(isDueToday), [pinnedTasks])
+  const comingUpPinnedTasks = useMemo(
+    () => pinnedTasks.filter((t) => !isDueToday(t)),
+    [pinnedTasks],
+  )
+
   const groups = useMemo(
     () => groupTasks(boardTasks, projects, groupBy),
     [boardTasks, projects, groupBy],
@@ -310,6 +332,23 @@ export function useTaskBoard() {
         if (idx === -1) continue
         const list = [...next[projectId]]
         list[idx] = { ...list[idx], labels }
+        next[projectId] = list
+        break
+      }
+      return next
+    })
+  }
+
+  // Rewrites one task's cached due date in place, the pull/releaseFromToday
+  // counterpart to setActiveTaskLabels above.
+  function setActiveTaskDue(taskId, due) {
+    setTasksByProject((prev) => {
+      const next = { ...prev }
+      for (const projectId of Object.keys(next)) {
+        const idx = next[projectId].findIndex((t) => t.id === taskId)
+        if (idx === -1) continue
+        const list = [...next[projectId]]
+        list[idx] = { ...list[idx], due }
         next[projectId] = list
         break
       }
@@ -385,6 +424,57 @@ export function useTaskBoard() {
     }
   }
 
+  // Pulls a pinned task into the Today subsection by setting its due date
+  // to today (issue #7). The optimistic due date is a guess — exact for a
+  // non-recurring task, and for a recurring one just its existing due
+  // shifted onto today's date (keeping string/is_recurring so its badge
+  // doesn't flicker) — the backend's actual write is what's authoritative;
+  // a background refetch corrects anything the guess got wrong.
+  async function pullTaskToToday(task) {
+    setActionError(null)
+    const previousDue = task.due || null
+    const timePart = previousDue?.date?.includes('T')
+      ? previousDue.date.slice(previousDue.date.indexOf('T'))
+      : ''
+    setActiveTaskDue(task.id, {
+      ...previousDue,
+      date: `${todayISODate()}${timePart}`,
+      string: previousDue?.string || 'Today',
+    })
+    mutationsInFlightRef.current++
+    try {
+      await updateTaskDue(task.id, 'pull_to_today', previousDue)
+    } catch (err) {
+      setActiveTaskDue(task.id, previousDue)
+      setActionError(err.message)
+    } finally {
+      mutationsInFlightRef.current--
+      flushPendingRefetch()
+    }
+  }
+
+  // Releases a pinned task from Today back into Coming up: clears its due
+  // date (issue #7). The optimistic update just blanks the date (dropping
+  // subsection membership immediately) while leaving the rest of `due`
+  // (string/is_recurring) alone, since the real next-occurrence date for a
+  // recurring task is computed server-side — see applyDueAction in
+  // backend/handlers.go — and isn't worth guessing here.
+  async function releaseTaskFromToday(task) {
+    setActionError(null)
+    const previousDue = task.due || null
+    setActiveTaskDue(task.id, previousDue ? { ...previousDue, date: '' } : null)
+    mutationsInFlightRef.current++
+    try {
+      await updateTaskDue(task.id, 'release_from_today', previousDue)
+    } catch (err) {
+      setActiveTaskDue(task.id, previousDue)
+      setActionError(err.message)
+    } finally {
+      mutationsInFlightRef.current--
+      flushPendingRefetch()
+    }
+  }
+
   // Completes a task via the Todoist API, treating pinned and unpinned
   // tasks uniformly: optimistically remove it from view (mirroring how
   // unpinTask already treats a checked pinned task), then roll back on
@@ -450,6 +540,38 @@ export function useTaskBoard() {
     flushPendingRefetch()
   }
 
+  // Dropping on the Today/Coming up subsections (issue #7) stops
+  // propagation so the outer handleDropOnPinned above (a plain pin, no due
+  // change) doesn't also fire for the same drop. A fresh drag from the
+  // board still just pins, same as dropping anywhere else in Pinned — only
+  // a card already pinned and moving between the two subsections triggers
+  // the due-date mutation.
+  function handleDropOnPinnedToday(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    const task = findTaskById(e.dataTransfer.getData('text/plain'))
+    if (task) {
+      if (!isPinned(task)) pinTask(task)
+      else if (!isDueToday(task)) pullTaskToToday(task)
+    }
+    draggingRef.current = false
+    setDraggingTaskId(null)
+    flushPendingRefetch()
+  }
+
+  function handleDropOnPinnedComingUp(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    const task = findTaskById(e.dataTransfer.getData('text/plain'))
+    if (task) {
+      if (!isPinned(task)) pinTask(task)
+      else if (isDueToday(task)) releaseTaskFromToday(task)
+    }
+    draggingRef.current = false
+    setDraggingTaskId(null)
+    flushPendingRefetch()
+  }
+
   function handleDropOnBoard(e) {
     e.preventDefault()
     const task = findTaskById(e.dataTransfer.getData('text/plain'))
@@ -475,6 +597,8 @@ export function useTaskBoard() {
     tasks,
     tasksLoaded,
     pinnedTasks,
+    todayPinnedTasks,
+    comingUpPinnedTasks,
     boardTasks,
     groups,
     sectionsById,
@@ -482,10 +606,14 @@ export function useTaskBoard() {
     toggleProject,
     pinTask,
     unpinTask,
+    pullTaskToToday,
+    releaseTaskFromToday,
     completeTask,
     handleDragStart,
     handleDragEnd,
     handleDropOnPinned,
+    handleDropOnPinnedToday,
+    handleDropOnPinnedComingUp,
     handleDropOnBoard,
   }
 }
