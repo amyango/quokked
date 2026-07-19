@@ -51,12 +51,53 @@
   margin-bottom: 24px;
 }
 
+.pinned-section-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  margin-bottom: 0;
+  border-radius: 0;
+  border: none;
+  padding: 24px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
 .pinned-section h2 {
   font-size: 15px;
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0 0 12px;
+}
+
+.pinned-section-expanded h2 {
+  font-size: 18px;
+  flex: 0 0 auto;
+}
+
+.pinned-expand-toggle {
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pinned-expand-toggle:hover {
+  border-color: var(--accent);
+  color: var(--text-h);
 }
 
 .pinned-empty {
@@ -80,6 +121,18 @@
 
 .pinned-list .task {
   flex: 0 0 260px;
+}
+
+.pinned-list-expanded {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  flex: 1 1 auto;
+  align-content: start;
+}
+
+.pinned-list-expanded .task {
+  flex: unset;
 }
 
 .board {

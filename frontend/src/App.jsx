@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { GROUP_OPTIONS, groupBySection } from './grouping'
+import PinnedSection from './PinnedSection'
 import SettingsPanel from './SettingsPanel'
 import TaskCard from './TaskCard'
 import { useTaskBoard } from './useTaskBoard'
@@ -77,32 +78,14 @@ export default function App() {
       )}
 
       {status === 'ready' && (
-        <section
-          className="pinned-section"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDropOnPinned}
-        >
-          <h2>
-            Pinned <span className="count">{pinnedTasks.length}</span>
-          </h2>
-          {pinnedTasks.length === 0 ? (
-            <p className="pinned-empty">Drag a task here to pin it</p>
-          ) : (
-            <ul className="pinned-list">
-              {pinnedTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  completedByName={task.checked ? collaborators[task.completed_by_uid]?.name : null}
-                  draggable
-                  dragging={draggingTaskId === task.id}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
+        <PinnedSection
+          pinnedTasks={pinnedTasks}
+          collaborators={collaborators}
+          draggingTaskId={draggingTaskId}
+          handleDragStart={handleDragStart}
+          handleDragEnd={handleDragEnd}
+          handleDropOnPinned={handleDropOnPinned}
+        />
       )}
 
       {status === 'ready' && activeProjectIds.size === 0 && (
