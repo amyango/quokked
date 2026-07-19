@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { GROUP_OPTIONS, groupBySection } from './grouping'
+import { GROUP_OPTIONS, groupBySection, nestByParent } from './grouping'
 import PinnedSection from './PinnedSection'
 import SettingsPanel from './SettingsPanel'
 import TaskCard from './TaskCard'
@@ -37,6 +37,26 @@ export default function App() {
   } = useTaskBoard()
 
   const [showSettings, setShowSettings] = useState(false)
+
+  // Renders one nestByParent() node as a TaskCard, recursing into its
+  // children (subtasks) so they render nested/attached under it rather than
+  // as separate top-level cards in the same bucket.
+  function renderTaskNode(node) {
+    const { task, children } = node
+    return (
+      <TaskCard
+        key={task.id}
+        task={task}
+        draggable
+        dragging={draggingTaskId === task.id}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onComplete={completeTask}
+      >
+        {children.length > 0 ? children.map((child) => renderTaskNode(child)) : null}
+      </TaskCard>
+    )
+  }
 
   // Exposes the active card accent color scheme as --accent-0..--accent-5
   // custom properties; TaskCard picks one per project via hashString.
@@ -130,19 +150,7 @@ export default function App() {
                   {sectionBuckets.map((bucket) => (
                     <div className="section-bucket" key={bucket.key}>
                       {bucket.name && <div className="section-separator">{bucket.name}</div>}
-                      <ul>
-                        {bucket.tasks.map((task) => (
-                          <TaskCard
-                            key={task.id}
-                            task={task}
-                            draggable
-                            dragging={draggingTaskId === task.id}
-                            onDragStart={handleDragStart}
-                            onDragEnd={handleDragEnd}
-                            onComplete={completeTask}
-                          />
-                        ))}
-                      </ul>
+                      <ul>{nestByParent(bucket.tasks).map((node) => renderTaskNode(node))}</ul>
                     </div>
                   ))}
                 </div>

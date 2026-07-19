@@ -249,6 +249,22 @@
   font-size: 14px;
 }
 
+/* Subtasks nested under a parent card (see grouping.js's nestByParent) —
+   indented and attached directly below the parent's content/meta, rather
+   than appearing as separate top-level cards in the same column/bucket.
+   Selector is `.task .subtasks` (not just `.subtasks`) so it outranks the
+   `.column ul` rule above on specificity — that rule's margin:0/padding:0
+   would otherwise win over this list's and collapse the indentation. */
+.task .subtasks {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0 0 0 16px;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .task-meta {
   display: flex;
   align-items: center;

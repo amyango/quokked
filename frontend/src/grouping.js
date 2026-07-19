@@ -78,3 +78,34 @@ export function groupBySection(tasks, sectionsById) {
     ? [{ key: 'none', name: null, tasks: unsectioned }, ...sectionBuckets]
     : sectionBuckets
 }
+
+// Nests subtasks under their parent within a single bucket of tasks (a
+// group, or a section bucket within a group), so a card's subtasks render
+// attached under it instead of as separate top-level cards in that same
+// bucket. Returns an array of { task, children } nodes, `children` being
+// the same shape (so a subtask that itself has subtasks nests correctly
+// too), in the original task order.
+//
+// A subtask whose parent didn't land in this same bucket (e.g. it's in a
+// different priority/label group, a different section, or is otherwise not
+// present in `tasks`) has nothing to attach to, so it's kept as a top-level
+// node here — the point is to group hierarchy visible *within* a bucket,
+// not to reshuffle tasks across buckets.
+export function nestByParent(tasks) {
+  const byId = new Map(tasks.map((task) => [task.id, task]))
+  const childrenByParentId = new Map()
+  const topLevel = []
+  for (const task of tasks) {
+    if (task.parent_id && byId.has(task.parent_id)) {
+      if (!childrenByParentId.has(task.parent_id)) childrenByParentId.set(task.parent_id, [])
+      childrenByParentId.get(task.parent_id).push(task)
+    } else {
+      topLevel.push(task)
+    }
+  }
+  const buildNode = (task) => ({
+    task,
+    children: (childrenByParentId.get(task.id) || []).map(buildNode),
+  })
+  return topLevel.map(buildNode)
+}

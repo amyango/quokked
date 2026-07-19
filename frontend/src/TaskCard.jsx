@@ -24,6 +24,11 @@ function Avatar({ name }) {
 // A single task card, shared by the pinned section and the grouped board
 // below it. Drag-and-drop between the two sections adds/removes the "pin"
 // label; see App.jsx for the drop handlers.
+//
+// `children`, when passed, is rendered as a nested list of subtask cards
+// attached under this one (see grouping.js's nestByParent and App.jsx's
+// group rendering) — omitted entirely for cards with no subtasks in the
+// same bucket, or when a caller (e.g. PinnedSection) doesn't nest at all.
 export default function TaskCard({
   task,
   completedByName,
@@ -32,6 +37,7 @@ export default function TaskCard({
   onDragStart,
   onDragEnd,
   onComplete,
+  children,
 }) {
   const completed = task.checked
   // Card accent: deterministic pick from the active color scheme's 6 colors
@@ -77,6 +83,7 @@ export default function TaskCard({
           ))}
         {completed && completedByName && <Avatar name={completedByName} />}
       </div>
+      {children && <ul className="subtasks">{children}</ul>}
     </li>
   )
 }
