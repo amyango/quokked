@@ -42,11 +42,11 @@ function todayISODate() {
 }
 
 // A pinned task belongs in the "Today" subsection when its due date is
-// exactly today; everything else (no date, or a date in the past/future)
-// is "Coming up" — see PinnedSection.jsx.
-function isDueToday(task) {
+// today or earlier (overdue tasks need attention now too); everything else
+// (no date, or a future date) is "Coming up" — see PinnedSection.jsx.
+function isDueTodayOrOverdue(task) {
   const date = task.due?.date
-  return !!date && date.slice(0, 10) === todayISODate()
+  return !!date && date.slice(0, 10) <= todayISODate()
 }
 
 // Tasks in a disabled section are hidden from the board entirely (not just
@@ -305,9 +305,9 @@ export function useTaskBoard() {
   }, [pinnedActiveTasks, pinnedCompleted, justCompletedPinned])
 
   // Split for PinnedSection's Today / Coming up subsections (issue #7).
-  const todayPinnedTasks = useMemo(() => pinnedTasks.filter(isDueToday), [pinnedTasks])
+  const todayPinnedTasks = useMemo(() => pinnedTasks.filter(isDueTodayOrOverdue), [pinnedTasks])
   const comingUpPinnedTasks = useMemo(
-    () => pinnedTasks.filter((t) => !isDueToday(t)),
+    () => pinnedTasks.filter((t) => !isDueTodayOrOverdue(t)),
     [pinnedTasks],
   )
 
@@ -552,7 +552,7 @@ export function useTaskBoard() {
     const task = findTaskById(e.dataTransfer.getData('text/plain'))
     if (task) {
       if (!isPinned(task)) pinTask(task)
-      else if (!isDueToday(task)) pullTaskToToday(task)
+      else if (!isDueTodayOrOverdue(task)) pullTaskToToday(task)
     }
     draggingRef.current = false
     setDraggingTaskId(null)
@@ -565,7 +565,7 @@ export function useTaskBoard() {
     const task = findTaskById(e.dataTransfer.getData('text/plain'))
     if (task) {
       if (!isPinned(task)) pinTask(task)
-      else if (isDueToday(task)) releaseTaskFromToday(task)
+      else if (isDueTodayOrOverdue(task)) releaseTaskFromToday(task)
     }
     draggingRef.current = false
     setDraggingTaskId(null)
