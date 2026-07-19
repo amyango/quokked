@@ -6,10 +6,12 @@ React + Vite, plain fetch (no data-fetching library). Cross-cutting repo notes (
 
 - `src/api.js` — calls the backend.
 - `src/grouping.js` — group-by logic for the board.
-- `src/useTaskBoard.js` — hook owning all data fetching, SSE-triggered background refetch, drag state, and pin/unpin mutations. This is where board *logic* changes go.
-- `src/App.jsx` — renders the board from what `useTaskBoard` returns. This is where board *layout/markup* changes go. Keep it presentation-only — new data/mutation logic belongs in the hook, not here, or it regrows into a monolith.
+- `src/useTaskBoard.js` — hook owning all data fetching, SSE-triggered background refetch, drag state, and mutations (`pinTask`/`unpinTask`/`completeTask`, all exported). This is where board *logic* changes go — a new mutation follows the existing optimistic-update/rollback shape (mutate local state, increment `mutationsInFlightRef`, call the API, roll back + `setActionError` on failure, decrement + `flushPendingRefetch` in `finally`).
+- `src/App.jsx` — renders the board from what `useTaskBoard` returns. This is where board *layout/markup* changes go. Keep it presentation-only — new data/mutation logic belongs in the hook, not here, or it regrows into a monolith. Note: nearly every new UI feature ends up adding a line here (a new component render, a new prop on `<TaskCard>`), which makes this the most common merge-conflict point when working on more than one issue at once — see root CLAUDE.md's "Conventions for concurrent work."
 - `src/TaskCard.jsx` — single task card component.
-- `src/SettingsPanel.jsx` — modal for editing `defaultProjects`/`disabledSections`. Owns its own draft state and per-project section fetches locally (self-contained form logic); only calls back into `useTaskBoard`'s `saveSettings` to persist.
+- `src/PinnedSection.jsx` — the Pinned section: drop target, optional fullscreen expand/collapse (own local state + Escape-key listener), renders `TaskCard`s.
+- `src/SettingsPanel.jsx` — modal for editing `defaultProjects`/`disabledSections`/`theme`/`colorScheme`. Owns its own draft state and per-project section fetches locally (self-contained form logic); only calls back into `useTaskBoard`'s `saveSettings` to persist.
+- `src/theme.js` — named card-accent color presets (`COLOR_SCHEMES`) and the `colorsForScheme` lookup; `App.jsx` exposes the active one as `--accent-0`..`--accent-5` CSS custom properties, `TaskCard.jsx` picks one per card by hashing `project_id`.
 
 ## Gotchas specific to this machine / project
 
