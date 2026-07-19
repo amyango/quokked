@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  completeTask as completeTaskRequest,
   createEventsSource,
   fetchPinnedCompleted,
   fetchProjects,
@@ -266,6 +267,32 @@ export function useTaskBoard() {
     })
   }
 
+  // Removes one task from tasksByProject in place, wherever it lives —
+  // the completeTask counterpart to setActiveTaskLabels above.
+  function removeActiveTask(taskId) {
+    setTasksByProject((prev) => {
+      const next = { ...prev }
+      for (const projectId of Object.keys(next)) {
+        const idx = next[projectId].findIndex((t) => t.id === taskId)
+        if (idx === -1) continue
+        next[projectId] = next[projectId].filter((t) => t.id !== taskId)
+        break
+      }
+      return next
+    })
+  }
+
+  // Restores a previously-removed task to its project's list, used to roll
+  // back an optimistic completeTask on failure.
+  function insertActiveTask(task) {
+    setTasksByProject((prev) => {
+      const projectId = task.project_id
+      if (!(projectId in prev)) return prev
+      if (prev[projectId].some((t) => t.id === task.id)) return prev
+      return { ...prev, [projectId]: [...prev[projectId], task] }
+    })
+  }
+
   async function pinTask(task) {
     setActionError(null)
     const previousLabels = task.labels || []
@@ -300,6 +327,33 @@ export function useTaskBoard() {
         setPinnedCompleted((prev) => [...prev, task])
       } else {
         setActiveTaskLabels(task.id, previousLabels)
+      }
+      setActionError(err.message)
+    } finally {
+      mutationsInFlightRef.current--
+      flushPendingRefetch()
+    }
+  }
+
+  // Completes a task via the Todoist API, treating pinned and unpinned
+  // tasks uniformly: optimistically remove it from view (mirroring how
+  // unpinTask already treats a checked pinned task), then roll back on
+  // failure by re-inserting the captured task.
+  async function completeTask(task) {
+    setActionError(null)
+    if (task.checked) {
+      setPinnedCompleted((prev) => prev.filter((t) => t.id !== task.id))
+    } else {
+      removeActiveTask(task.id)
+    }
+    mutationsInFlightRef.current++
+    try {
+      await completeTaskRequest(task.id)
+    } catch (err) {
+      if (task.checked) {
+        setPinnedCompleted((prev) => [...prev, task])
+      } else {
+        insertActiveTask(task)
       }
       setActionError(err.message)
     } finally {
@@ -358,6 +412,9 @@ export function useTaskBoard() {
     sectionsById,
     otherProjects,
     toggleProject,
+    pinTask,
+    unpinTask,
+    completeTask,
     handleDragStart,
     handleDragEnd,
     handleDropOnPinned,

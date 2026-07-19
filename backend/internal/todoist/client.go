@@ -194,6 +194,16 @@ func (c *Client) UpdateTaskLabels(taskID string, labels []string) (*Task, error)
 	return &task, nil
 }
 
+// CompleteTask marks a task complete (Todoist calls this "closing" a task).
+// The endpoint returns 204 No Content on success, so there's nothing to
+// decode into.
+func (c *Client) CompleteTask(taskID string) error {
+	if err := c.post("/tasks/"+taskID+"/close", map[string]interface{}{}, nil); err != nil {
+		return fmt.Errorf("complete task: %w", err)
+	}
+	return nil
+}
+
 func fetchAllPages[T any](c *Client, path string, params url.Values) ([]T, error) {
 	var all []T
 	cursor := ""
@@ -243,6 +253,10 @@ func (c *Client) get(path string, params url.Values, cursor string, out interfac
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// post issues a JSON-bodied POST. Most Todoist write endpoints return 200
+// with a JSON body describing the updated resource, but some (e.g.
+// /tasks/{id}/close) return 204 No Content with an empty body — decoding is
+// skipped when out is nil or the response is 204.
 func (c *Client) post(path string, body interface{}, out interface{}) error {
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -262,8 +276,12 @@ func (c *Client) post(path string, body interface{}, out interface{}) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("todoist API returned status %d", resp.StatusCode)
+	}
+
+	if out == nil || resp.StatusCode == http.StatusNoContent {
+		return nil
 	}
 
 	return json.NewDecoder(resp.Body).Decode(out)

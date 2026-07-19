@@ -27,6 +27,7 @@ export default function App() {
     otherProjects,
     addedProjectIds,
     toggleProject,
+    completeTask,
     handleDragStart,
     handleDragEnd,
     handleDropOnPinned,
@@ -98,6 +99,7 @@ export default function App() {
                   dragging={draggingTaskId === task.id}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
+                  onComplete={completeTask}
                 />
               ))}
             </ul>
@@ -146,6 +148,7 @@ export default function App() {
                             dragging={draggingTaskId === task.id}
                             onDragStart={handleDragStart}
                             onDragEnd={handleDragEnd}
+                            onComplete={completeTask}
                           />
                         ))}
                       </ul>
