@@ -45,7 +45,12 @@ function isSectionDisabled(task, disabledSections) {
 // state and derived values this returns.
 export function useTaskBoard() {
   const [projects, setProjects] = useState([])
-  const [settings, setSettings] = useState({ defaultProjects: [], disabledSections: {} })
+  const [settings, setSettings] = useState({
+    defaultProjects: [],
+    disabledSections: {},
+    theme: '',
+    colorScheme: '',
+  })
   const [addedProjectIds, setAddedProjectIds] = useState(loadAddedProjectIds)
   const [tasksByProject, setTasksByProject] = useState({}) // projectId -> Task[]
   const [sectionsByProject, setSectionsByProject] = useState({}) // projectId -> Section[]
@@ -64,6 +69,8 @@ export function useTaskBoard() {
         setSettings({
           defaultProjects: settings.defaultProjects || [],
           disabledSections: settings.disabledSections || {},
+          theme: settings.theme || '',
+          colorScheme: settings.colorScheme || '',
         })
         setPinnedCompleted(pinned.tasks || [])
         setCollaborators(pinned.collaborators || {})
@@ -90,9 +97,22 @@ export function useTaskBoard() {
     setSettings({
       defaultProjects: saved.defaultProjects || [],
       disabledSections: saved.disabledSections || {},
+      theme: saved.theme || '',
+      colorScheme: saved.colorScheme || '',
     })
     return saved
   }
+
+  // Applies the chosen theme immediately (on load and after every save),
+  // rather than waiting for a reload: "" (system) clears the override so
+  // the @media(prefers-color-scheme) rule in index.css takes back over.
+  useEffect(() => {
+    if (settings.theme === 'dark' || settings.theme === 'light') {
+      document.documentElement.dataset.theme = settings.theme
+    } else {
+      delete document.documentElement.dataset.theme
+    }
+  }, [settings.theme])
 
   const activeProjectIds = useMemo(
     () => new Set([...defaultProjectIds, ...addedProjectIds]),

@@ -2,5 +2,7 @@
   "defaultProjects": ["Inbox"],
   "disabledSections": {
     "<project_id>": ["<section_id>"]
-  }
+  },
+  "theme": "system",
+  "colorScheme": "default"
 }

@@ -17,6 +17,12 @@ type Settings struct {
 	// DisabledSections maps a project id to the section ids within it whose
 	// tasks should be hidden from the grouped board view.
 	DisabledSections map[string][]string `json:"disabledSections,omitempty"`
+	// Theme is an explicit light/dark mode override; "" means follow the
+	// system's prefers-color-scheme.
+	Theme string `json:"theme,omitempty"`
+	// ColorScheme names a preset of 6 card accent colors (see
+	// frontend/src/theme.js); "" means use the default preset.
+	ColorScheme string `json:"colorScheme,omitempty"`
 }
 
 // Load reads config/settings.json. A missing file just means no default
