@@ -56,6 +56,15 @@ export function useTaskBoard() {
   const [tasksByProject, setTasksByProject] = useState({}) // projectId -> Task[]
   const [sectionsByProject, setSectionsByProject] = useState({}) // projectId -> Section[]
   const [pinnedCompleted, setPinnedCompleted] = useState([])
+  // Pinned recurring tasks: completing one moves Todoist's due date to the
+  // next occurrence rather than actually removing the task, so it would
+  // otherwise reappear in the pinned list mid-mutation showing tomorrow's
+  // date instead of reflecting today's completion. This tracks
+  // just-completed pinned recurring tasks (id -> task snapshot at
+  // completion time) so the pinned section can force a "completed" look
+  // for them until the next background refetch brings back authoritative
+  // data — see completeTask and the pinnedTasks memo below.
+  const [justCompletedPinned, setJustCompletedPinned] = useState(new Map())
   const [collaborators, setCollaborators] = useState({}) // uid -> { id, name, email }
   const [draggingTaskId, setDraggingTaskId] = useState(null)
   const [groupBy, setGroupBy] = useState('project')
@@ -190,6 +199,12 @@ export function useTaskBoard() {
     setPinnedCompleted(pinned.tasks || [])
     setCollaborators(pinned.collaborators || {})
     setProjects(projectList)
+    // Fresh data has arrived for every active project, so any pinned
+    // recurring task completed since the last refetch now shows its real
+    // state (either its next occurrence, or a historical completed entry
+    // from pinnedCompleted) — the forced "just completed" overlay is no
+    // longer needed.
+    setJustCompletedPinned(new Map())
   }
 
   // A background refetch must never disturb an in-progress drag or race an
@@ -253,11 +268,26 @@ export function useTaskBoard() {
   const pinnedActiveTasks = useMemo(() => tasks.filter(isPinned), [tasks])
   const boardTasks = useMemo(() => tasks.filter((t) => !isPinned(t)), [tasks])
   const pinnedTasks = useMemo(() => {
-    const completed = [...pinnedCompleted].sort((a, b) =>
-      (b.completed_at || '').localeCompare(a.completed_at || ''),
-    )
-    return [...pinnedActiveTasks, ...completed]
-  }, [pinnedActiveTasks, pinnedCompleted])
+    // A pinned recurring task can legitimately appear in both
+    // pinnedActiveTasks (its next occurrence, once a refetch lands) and
+    // pinnedCompleted (today's historical completion, from the @pin
+    // completed-tasks fetch) with the same task id. Prefer the active
+    // entry — it's the authoritative current state — and drop the
+    // now-redundant completed one, so the same id never renders twice.
+    const activeIds = new Set(pinnedActiveTasks.map((t) => t.id))
+    const completed = [...pinnedCompleted]
+      .filter((t) => !activeIds.has(t.id))
+      .sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''))
+    // Just-completed pinned recurring tasks: force a checked/completed look
+    // until the next refetch, instead of either vanishing (the optimistic
+    // removal already applied to tasksByProject) or reappearing with
+    // tomorrow's due date. Once a refetch clears justCompletedPinned (or
+    // brings the id back into pinnedActiveTasks first), this drops out.
+    const justCompletedOverlay = [...justCompletedPinned.values()]
+      .filter((t) => !activeIds.has(t.id))
+      .map((t) => ({ ...t, checked: true }))
+    return [...pinnedActiveTasks, ...justCompletedOverlay, ...completed]
+  }, [pinnedActiveTasks, pinnedCompleted, justCompletedPinned])
 
   const groups = useMemo(
     () => groupTasks(boardTasks, projects, groupBy),
@@ -359,12 +389,23 @@ export function useTaskBoard() {
   // tasks uniformly: optimistically remove it from view (mirroring how
   // unpinTask already treats a checked pinned task), then roll back on
   // failure by re-inserting the captured task.
+  //
+  // A pinned recurring task is a special case: Todoist "closes" it by
+  // rescheduling to the next occurrence rather than actually removing it,
+  // so the plain removeActiveTask above would just be undone by the next
+  // refetch (the task reappears, still pinned, now due tomorrow) with no
+  // sign the completion happened. Track it in justCompletedPinned so the
+  // pinnedTasks memo can force a completed look until fresher data arrives.
   async function completeTask(task) {
     setActionError(null)
+    const isPinnedRecurring = !task.checked && isPinned(task) && !!task.due?.is_recurring
     if (task.checked) {
       setPinnedCompleted((prev) => prev.filter((t) => t.id !== task.id))
     } else {
       removeActiveTask(task.id)
+    }
+    if (isPinnedRecurring) {
+      setJustCompletedPinned((prev) => new Map(prev).set(task.id, task))
     }
     mutationsInFlightRef.current++
     try {
@@ -374,6 +415,13 @@ export function useTaskBoard() {
         setPinnedCompleted((prev) => [...prev, task])
       } else {
         insertActiveTask(task)
+      }
+      if (isPinnedRecurring) {
+        setJustCompletedPinned((prev) => {
+          const next = new Map(prev)
+          next.delete(task.id)
+          return next
+        })
       }
       setActionError(err.message)
     } finally {
