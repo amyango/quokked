@@ -300,8 +300,11 @@ func newUUID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
+// all starts as an empty (non-nil) slice, not "var all []T", so that a
+// zero-result page still marshals to JSON "[]" rather than "null" — a null
+// response crashes frontend code that iterates the result unconditionally.
 func fetchAllPages[T any](c *Client, path string, params url.Values) ([]T, error) {
-	var all []T
+	all := []T{}
 	cursor := ""
 	for {
 		var p page[T]
