@@ -27,9 +27,9 @@ Vite has `host: true` and `allowedHosts: true`, the backend CORS middleware refl
 
 `backend/.env` (gitignored) needs `TODOIST_API_TOKEN`. Copy from `backend/.env.example`. Token comes from the user's Todoist integrations settings page. Never print the token value in output.
 
-## Default homepage project(s)
+## Default homepage project(s) and section visibility
 
-`config/settings.json` (gitignored, like `backend/.env`) holds `{"defaultProjects": ["Name"]}` — project name(s), matched case-insensitively against `/api/projects`, to show on the homepage by default. Copy from `config/settings.example.json` to set up a fresh checkout. This spans both sides: backend loading/serving is in `backend/CLAUDE.md`, frontend fetch/persistence behavior is in `frontend/CLAUDE.md`.
+`config/settings.json` (gitignored, like `backend/.env`) holds `{"defaultProjects": ["Name"], "disabledSections": {"<project_id>": ["<section_id>"]}}` — project name(s) (matched case-insensitively against `/api/projects`) to show on the homepage by default, and per-project section ids whose tasks are hidden from the board. Editable by hand, or via the Settings pane in the UI. Copy from `config/settings.example.json` to set up a fresh checkout. This spans both sides: backend loading/serving/persisting is in `backend/CLAUDE.md`, frontend fetch/edit/persistence behavior is in `frontend/CLAUDE.md`.
 
 ## Git
 

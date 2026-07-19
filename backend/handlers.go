@@ -152,12 +152,27 @@ func handleSections(client *todoist.Client) http.HandlerFunc {
 	}
 }
 
+// handleSettings serves GET /api/settings (current settings) and PUT
+// /api/settings (replace them wholesale, e.g. from the settings pane).
 func handleSettings(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, settings.Load())
+	case http.MethodPut:
+		var s settings.Settings
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if err := settings.Save(s); err != nil {
+			log.Printf("save settings: %v", err)
+			http.Error(w, "failed to save settings", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, s)
+	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
-	writeJSON(w, http.StatusOK, settings.Load())
 }
 
 func writeJSON(w http.ResponseWriter, status int, body interface{}) {

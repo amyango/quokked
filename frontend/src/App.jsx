@@ -1,10 +1,15 @@
+import { useState } from 'react'
 import { GROUP_OPTIONS, groupBySection } from './grouping'
+import SettingsPanel from './SettingsPanel'
 import TaskCard from './TaskCard'
 import { useTaskBoard } from './useTaskBoard'
 import './App.css'
 
 export default function App() {
   const {
+    projects,
+    settings,
+    saveSettings,
     collaborators,
     draggingTaskId,
     groupBy,
@@ -28,6 +33,8 @@ export default function App() {
     handleDropOnBoard,
   } = useTaskBoard()
 
+  const [showSettings, setShowSettings] = useState(false)
+
   return (
     <div className="app">
       <header className="app-header">
@@ -43,8 +50,18 @@ export default function App() {
               {option.label}
             </button>
           ))}
+          <button onClick={() => setShowSettings(true)}>Settings</button>
         </div>
       </header>
+
+      {showSettings && (
+        <SettingsPanel
+          projects={projects}
+          settings={settings}
+          onClose={() => setShowSettings(false)}
+          onSave={saveSettings}
+        />
+      )}
 
       {status === 'loading' && <p className="status">Loading tasks…</p>}
       {status === 'error' && (
@@ -90,8 +107,8 @@ export default function App() {
 
       {status === 'ready' && activeProjectIds.size === 0 && (
         <p className="status">
-          No default project configured. Set <code>defaultProjects</code> in{' '}
-          <code>config/settings.json</code>, or add a project below.
+          No default project configured. Pick one from <strong>Settings</strong> above, or add a
+          project below.
         </p>
       )}
       {status === 'ready' && activeProjectIds.size > 0 && !tasksLoaded && (

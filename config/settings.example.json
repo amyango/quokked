@@ -1,3 +1,6 @@
 {
-  "defaultProjects": ["Inbox"]
+  "defaultProjects": ["Inbox"],
+  "disabledSections": {
+    "<project_id>": ["<section_id>"]
+  }
 }

@@ -29,6 +29,18 @@ export function fetchSettings() {
   return getJSON('/api/settings')
 }
 
+export async function saveSettings(settings) {
+  const res = await fetch(`${API_BASE}/api/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  })
+  if (!res.ok) {
+    throw new Error(`save settings failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export function fetchPinnedCompleted() {
   return getJSON('/api/pinned/completed')
 }

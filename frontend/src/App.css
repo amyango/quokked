@@ -260,3 +260,121 @@
   border-color: var(--accent);
   color: var(--text-h);
 }
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10vh 16px 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.settings-panel {
+  width: 100%;
+  max-width: 480px;
+  max-height: 75vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.settings-close {
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.settings-hint {
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+.settings-project-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-project {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+
+.settings-project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.settings-expand {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 4px 24px;
+}
+
+.settings-section-row {
+  font-size: 13px;
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-footer button {
+  font: inherit;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.settings-save {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--text-h);
+}

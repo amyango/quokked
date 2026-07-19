@@ -9,11 +9,12 @@ React + Vite, plain fetch (no data-fetching library). Cross-cutting repo notes (
 - `src/useTaskBoard.js` — hook owning all data fetching, SSE-triggered background refetch, drag state, and pin/unpin mutations. This is where board *logic* changes go.
 - `src/App.jsx` — renders the board from what `useTaskBoard` returns. This is where board *layout/markup* changes go. Keep it presentation-only — new data/mutation logic belongs in the hook, not here, or it regrows into a monolith.
 - `src/TaskCard.jsx` — single task card component.
+- `src/SettingsPanel.jsx` — modal for editing `defaultProjects`/`disabledSections`. Owns its own draft state and per-project section fetches locally (self-contained form logic); only calls back into `useTaskBoard`'s `saveSettings` to persist.
 
 ## Gotchas specific to this machine / project
 
 - **Node wasn't preinstalled** on this machine; it was installed via `brew install node` during setup. If it's ever missing again, that's the fix.
 
-## Default homepage project(s)
+## Default homepage project(s) and section visibility
 
-The frontend (`useTaskBoard.js`) fetches tasks for default projects (from `GET /api/settings`) on load; projects not in the default list appear in a bottom bar (rendered by `App.jsx`) and are only fetched when the user clicks to add them. Which non-default projects are added persists across reloads via `localStorage` (key `quokked.addedProjectIds`), not in the config file. See root CLAUDE.md for the config file format and backend/CLAUDE.md for how the backend serves it.
+The frontend (`useTaskBoard.js`) fetches tasks for default projects (from `GET /api/settings`) on load; projects not in the default list appear in a bottom bar (rendered by `App.jsx`) and are only fetched when the user clicks to add them. Which non-default projects are added persists across reloads via `localStorage` (key `quokked.addedProjectIds`), not in the config file. `useTaskBoard` also filters out any task whose `section_id` is in `settings.disabledSections[project_id]` before it reaches grouping — hidden sections disappear from every group-by mode, not just the "Project" grouped view. The Settings button in `App.jsx` opens `SettingsPanel.jsx`, which edits both fields and saves via `useTaskBoard`'s `saveSettings` (`PUT /api/settings`); on success the hook updates local state directly rather than triggering a full reload. See root CLAUDE.md for the config file format and backend/CLAUDE.md for how the backend serves/persists it.

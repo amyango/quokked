@@ -6,6 +6,7 @@ import {
   fetchSectionsForProject,
   fetchSettings,
   fetchTasksForProject,
+  saveSettings as saveSettingsRequest,
   updateTaskLabels,
 } from './api'
 import { groupTasks } from './grouping'
@@ -32,12 +33,19 @@ function isPinned(task) {
   return task.labels?.includes(PIN_LABEL)
 }
 
+// Tasks in a disabled section are hidden from the board entirely (not just
+// the grouped view), across every group-by mode.
+function isSectionDisabled(task, disabledSections) {
+  const disabled = disabledSections[task.project_id]
+  return !!disabled && disabled.includes(task.section_id)
+}
+
 // useTaskBoard owns all data fetching, background refetch/SSE wiring, and
 // pin/unpin mutations for the board. App.jsx is left to just render the
 // state and derived values this returns.
 export function useTaskBoard() {
   const [projects, setProjects] = useState([])
-  const [defaultProjectNames, setDefaultProjectNames] = useState([])
+  const [settings, setSettings] = useState({ defaultProjects: [], disabledSections: {} })
   const [addedProjectIds, setAddedProjectIds] = useState(loadAddedProjectIds)
   const [tasksByProject, setTasksByProject] = useState({}) // projectId -> Task[]
   const [sectionsByProject, setSectionsByProject] = useState({}) // projectId -> Section[]
@@ -53,7 +61,10 @@ export function useTaskBoard() {
     Promise.all([fetchProjects(), fetchSettings(), fetchPinnedCompleted()])
       .then(([projects, settings, pinned]) => {
         setProjects(projects)
-        setDefaultProjectNames(settings.defaultProjects || [])
+        setSettings({
+          defaultProjects: settings.defaultProjects || [],
+          disabledSections: settings.disabledSections || {},
+        })
         setPinnedCompleted(pinned.tasks || [])
         setCollaborators(pinned.collaborators || {})
         setStatus('ready')
@@ -65,11 +76,23 @@ export function useTaskBoard() {
   }, [])
 
   const defaultProjectIds = useMemo(() => {
-    const names = new Set(defaultProjectNames.map((name) => name.toLowerCase()))
+    const names = new Set(settings.defaultProjects.map((name) => name.toLowerCase()))
     return new Set(
       projects.filter((p) => names.has(p.name.toLowerCase())).map((p) => p.id),
     )
-  }, [projects, defaultProjectNames])
+  }, [projects, settings.defaultProjects])
+
+  // Saves settings to the backend and, on success, updates local state so
+  // the board (default projects, hidden sections) reflects the change
+  // immediately without a full reload.
+  async function saveSettings(newSettings) {
+    const saved = await saveSettingsRequest(newSettings)
+    setSettings({
+      defaultProjects: saved.defaultProjects || [],
+      disabledSections: saved.disabledSections || {},
+    })
+    return saved
+  }
 
   const activeProjectIds = useMemo(
     () => new Set([...defaultProjectIds, ...addedProjectIds]),
@@ -198,8 +221,11 @@ export function useTaskBoard() {
   }
 
   const tasks = useMemo(
-    () => [...activeProjectIds].flatMap((id) => tasksByProject[id] || []),
-    [activeProjectIds, tasksByProject],
+    () =>
+      [...activeProjectIds]
+        .flatMap((id) => tasksByProject[id] || [])
+        .filter((task) => !isSectionDisabled(task, settings.disabledSections)),
+    [activeProjectIds, tasksByProject, settings.disabledSections],
   )
   const tasksLoaded = [...activeProjectIds].every((id) => id in tasksByProject)
 
@@ -313,6 +339,8 @@ export function useTaskBoard() {
 
   return {
     projects,
+    settings,
+    saveSettings,
     addedProjectIds,
     collaborators,
     draggingTaskId,
