@@ -24,7 +24,15 @@ function Avatar({ name }) {
 // A single task card, shared by the pinned section and the grouped board
 // below it. Drag-and-drop between the two sections adds/removes the "pin"
 // label; see App.jsx for the drop handlers.
-export default function TaskCard({ task, completedByName, draggable, dragging, onDragStart, onDragEnd }) {
+export default function TaskCard({
+  task,
+  completedByName,
+  draggable,
+  dragging,
+  onDragStart,
+  onDragEnd,
+  onComplete,
+}) {
   const completed = task.checked
   return (
     <li
@@ -37,6 +45,19 @@ export default function TaskCard({ task, completedByName, draggable, dragging, o
       }}
       onDragEnd={onDragEnd}
     >
+      {!completed && onComplete && (
+        <button
+          type="button"
+          className="task-complete"
+          aria-label="Complete task"
+          draggable={false}
+          onClick={(e) => {
+            e.stopPropagation()
+            onComplete(task)
+          }}
+          onDragStart={(e) => e.stopPropagation()}
+        />
+      )}
       <p className="task-content">{task.content}</p>
       <div className="task-meta">
         {completed && <span className="checkmark">✓</span>}

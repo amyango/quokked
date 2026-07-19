@@ -12,6 +12,7 @@ export default function PinnedSection({
   handleDragStart,
   handleDragEnd,
   handleDropOnPinned,
+  onComplete,
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -55,6 +56,7 @@ export default function PinnedSection({
               dragging={draggingTaskId === task.id}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
+              onComplete={onComplete}
             />
           ))}
         </ul>

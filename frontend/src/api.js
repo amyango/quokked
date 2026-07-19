@@ -60,3 +60,15 @@ export async function updateTaskLabels(taskId, labels) {
   }
   return res.json()
 }
+
+export async function completeTask(taskId) {
+  const res = await fetch(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ complete: true }),
+  })
+  if (!res.ok) {
+    throw new Error(`complete task ${taskId} failed: ${res.status}`)
+  }
+  return res.json()
+}

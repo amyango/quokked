@@ -37,9 +37,10 @@ func handleTasks(client *todoist.Client) http.HandlerFunc {
 	}
 }
 
-// handleTaskUpdate handles PATCH /api/tasks/{id}, currently only used to
-// replace a task's label set (e.g. adding/removing "pin" when a card is
-// dragged between the pinned and unpinned sections).
+// handleTaskUpdate handles PATCH /api/tasks/{id}: replacing a task's label
+// set (e.g. adding/removing "pin" when a card is dragged between the pinned
+// and unpinned sections), or marking it complete when {"complete": true} is
+// sent (e.g. the complete button on a task card).
 func handleTaskUpdate(client *todoist.Client, poke chan<- struct{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPatch {
@@ -53,10 +54,25 @@ func handleTaskUpdate(client *todoist.Client, poke chan<- struct{}) http.Handler
 		}
 
 		var body struct {
-			Labels []string `json:"labels"`
+			Labels   []string `json:"labels,omitempty"`
+			Complete bool     `json:"complete,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if body.Complete {
+			if err := client.CompleteTask(taskID); err != nil {
+				log.Printf("complete task: %v", err)
+				http.Error(w, "failed to complete task in Todoist", http.StatusBadGateway)
+				return
+			}
+			select {
+			case poke <- struct{}{}:
+			default:
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"completed": true})
 			return
 		}
 
